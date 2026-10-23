@@ -1,0 +1,143 @@
+import { Perk, ShipClass, ShipClassId } from './types';
+
+export const SHIP_CLASSES: Record<ShipClassId, ShipClass> = {
+  interceptor: {
+    id: 'interceptor',
+    nameTr: 'Hayalet Avcı',
+    nameEn: 'Ghost Interceptor',
+    taglineTr: 'Yüksek manevra kabiliyeti, seri plazma namluları ve hızlı atılma.',
+    speed: 340,
+    maxHp: 80,
+    maxShield: 60,
+    shieldRechargeRate: 8,
+    fireRate: 6.5,
+    bulletDamage: 18,
+    bulletSpeed: 620,
+    dashCooldown: 2.2,
+    color: '#06b6d4', // Cyan
+    trailColor: 'rgba(6, 182, 212, 0.5)',
+  },
+  vanguard: {
+    id: 'vanguard',
+    nameTr: 'Siber Öncü',
+    nameEn: 'Vanguard Striker',
+    taglineTr: 'Mükemmel denge, taktiksel kalkan dolumu ve hassas yönlendirme.',
+    speed: 290,
+    maxHp: 100,
+    maxShield: 100,
+    shieldRechargeRate: 14,
+    fireRate: 4.8,
+    bulletDamage: 25,
+    bulletSpeed: 560,
+    dashCooldown: 3.0,
+    color: '#3b82f6', // Electric Blue
+    trailColor: 'rgba(59, 130, 246, 0.5)',
+  },
+  dreadnought: {
+    id: 'dreadnought',
+    nameTr: 'Ağır Titan',
+    nameEn: 'Dreadnought',
+    taglineTr: 'Ağır zırh kaplaması, patlayıcı vuruş gücü ve yüksek direnç.',
+    speed: 230,
+    maxHp: 160,
+    maxShield: 140,
+    shieldRechargeRate: 10,
+    fireRate: 3.2,
+    bulletDamage: 44,
+    bulletSpeed: 500,
+    dashCooldown: 4.2,
+    color: '#ec4899', // Pink / Neon Crimson
+    trailColor: 'rgba(236, 72, 153, 0.5)',
+  },
+};
+
+export const ALL_PERKS: Perk[] = [
+  {
+    id: 'double_barrel',
+    nameTr: 'Çift Namlu Plazma',
+    nameEn: 'Twin Plasma Barrels',
+    descriptionTr: 'Her atışta paralel iki mermi ateşleyin.',
+    descriptionEn: 'Fires two parallel plasma projectiles per shot.',
+    icon: 'zap',
+    tier: 'rare',
+  },
+  {
+    id: 'piercing_rounds',
+    nameTr: 'Delici Çekirdek',
+    nameEn: 'Piercing Rounds',
+    descriptionTr: 'Mermiler ek olarak 2 düşmanı delip geçer.',
+    descriptionEn: 'Shots pierce through 2 additional enemies.',
+    icon: 'crosshair',
+    tier: 'common',
+  },
+  {
+    id: 'plasma_shield',
+    nameTr: 'Aşırı Yüklü Kalkan',
+    nameEn: 'Overcharged Shield',
+    descriptionTr: 'Maksimum kalkanı +50 artırır ve dolum hızını %40 hızlandırır.',
+    descriptionEn: '+50 Max Shields and 40% faster recharge speed.',
+    icon: 'shield',
+    tier: 'rare',
+  },
+  {
+    id: 'overcharge_thrust',
+    nameTr: 'İtiş Aşırı Hızlandırıcı',
+    nameEn: 'Thrust Overdrive',
+    descriptionTr: 'Gemi hızını %25 artırır, atılma bekleme süresini 1 saniye düşürür.',
+    descriptionEn: '+25% Ship speed, -1.0s Dash cooldown.',
+    icon: 'wind',
+    tier: 'common',
+  },
+  {
+    id: 'magnetic_collector',
+    nameTr: 'Manyetik Toplayıcı',
+    nameEn: 'Magnetic Harvester',
+    descriptionTr: 'Enerji ve can kürelerini çekme menzilini 3 katına çıkarır.',
+    descriptionEn: 'Triples the magnetic orb pickup radius.',
+    icon: 'magnet',
+    tier: 'common',
+  },
+  {
+    id: 'emp_nova',
+    nameTr: 'Otomatik EMP Şok Dalgası',
+    nameEn: 'Automated EMP Nova',
+    descriptionTr: 'Her 8 saniyede bir yakınındaki tüm düşman mermilerini yok eder ve düşmanları sersemletir.',
+    descriptionEn: 'Every 8s, releases a shockwave that vaporizes enemy bullets.',
+    icon: 'radio',
+    tier: 'legendary',
+  },
+  {
+    id: 'nanite_repair',
+    nameTr: 'Nanit Onarım Birimi',
+    nameEn: 'Nanite Repair Hull',
+    descriptionTr: 'Gövdeyi anında 40 HP iyileştirir ve maksimum canı +40 artırır.',
+    descriptionEn: 'Instantly heals 40 HP and grants +40 Max HP.',
+    icon: 'activity',
+    tier: 'rare',
+  },
+  {
+    id: 'homing_missiles',
+    nameTr: 'Güdümlü Mikro Füzeler',
+    nameEn: 'Smart Micro-Missiles',
+    descriptionTr: 'Ateş ettiğinizde en yakın hedefe kilitlenen akıllı plazma üretir.',
+    descriptionEn: 'Fires smart homing micro-orbs seeking closest threats.',
+    icon: 'target',
+    tier: 'legendary',
+  },
+  {
+    id: 'hyper_cooling',
+    nameTr: 'Hiper Soğutucu Namlu',
+    nameEn: 'Hyper-Cooling Coils',
+    descriptionTr: 'Ateş hızını %35 artırır ve mermi hızını yükseltir.',
+    descriptionEn: '+35% fire rate and increased projectile speed.',
+    icon: 'flame',
+    tier: 'rare',
+  },
+];
+
+export const WORLD_BOUNDS = {
+  width: 2600,
+  height: 2600,
+};
+
+export const MAX_PARTICLES = 350;

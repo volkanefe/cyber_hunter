@@ -1,7 +1,6 @@
-import React from 'react';
-import { PlayerState, RunStats, ShipClass } from '../game/types';
+import { ActiveMissionBuffs, DailyMission, PlayerState, RunStats, ShipClass } from '../game/types';
 import { ALL_PERKS } from '../game/constants';
-import { Shield, Zap, Heart, Volume2, VolumeX, Pause, RotateCcw } from 'lucide-react';
+import { Shield, Zap, Heart, Volume2, VolumeX, Pause, RotateCcw, Gift, Sparkles } from 'lucide-react';
 import { soundEngine } from '../game/audio';
 
 interface HUDProps {
@@ -10,6 +9,10 @@ interface HUDProps {
   currentWave: number;
   shipClass: ShipClass;
   isMuted: boolean;
+  missions: DailyMission[];
+  buffs: ActiveMissionBuffs;
+  onOpenMissions: () => void;
+  missionAlert: DailyMission | null;
   onToggleMute: () => void;
   onPause: () => void;
   onRestart: () => void;
@@ -21,6 +24,10 @@ export const HUD: React.FC<HUDProps> = ({
   currentWave,
   shipClass,
   isMuted,
+  missions,
+  buffs,
+  onOpenMissions,
+  missionAlert,
   onToggleMute,
   onPause,
   onRestart,
@@ -129,21 +136,43 @@ export const HUD: React.FC<HUDProps> = ({
           </div>
         </div>
 
-        {/* Center: Wave Counter */}
-        <div className="flex flex-col items-center">
+        {/* Center: Wave Counter & Mission Completed Toast */}
+        <div className="flex flex-col items-center relative">
           <div className="px-4 py-1.5 rounded-lg bg-slate-950/80 border border-slate-700/70 shadow-lg text-center">
             <div className="text-[10px] font-display tracking-widest text-slate-400">SEKTÖR DALGASI</div>
             <div className="text-xl font-display font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-blue-400">
               {currentWave === 5 ? 'TİTAN SAVAŞI' : `DALGA ${currentWave} / 5`}
             </div>
           </div>
+
+          {/* Mission Completed Toast Banner */}
+          {missionAlert && (
+            <div className="absolute top-16 z-30 pointer-events-none flex items-center gap-2.5 px-4 py-2 rounded-xl bg-slate-900/95 border border-cyan-400 text-white shadow-[0_0_25px_rgba(6,182,212,0.6)] animate-bounce whitespace-nowrap">
+              <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+              <div className="text-left font-display">
+                <div className="text-[10px] text-cyan-300 tracking-wider uppercase font-bold">
+                  GÜNLÜK GÖREV TAMAMLANDI!
+                </div>
+                <div className="text-xs font-bold text-white">
+                  {missionAlert.titleTr} · <span className="text-amber-300 font-mono">{missionAlert.reward.labelTr}</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Top-Right: Score, Combo & Utility Actions */}
-        <div className="flex items-start gap-4">
-          {/* Score & Combo */}
+        <div className="flex items-start gap-3">
+          {/* Score, Bonus Multiplier & Combo */}
           <div className="flex flex-col items-end text-right">
-            <div className="text-[10px] font-display tracking-widest text-slate-400">SKOR</div>
+            <div className="flex items-center gap-1.5">
+              {buffs.scoreMultiplier > 1.0 && (
+                <span className="text-[10px] font-mono text-amber-300 font-bold bg-amber-950/80 px-1.5 py-0.2 rounded border border-amber-500/40">
+                  +{Math.round((buffs.scoreMultiplier - 1.0) * 100)}% GÖREV BONUSU
+                </span>
+              )}
+              <span className="text-[10px] font-display tracking-widest text-slate-400">SKOR</span>
+            </div>
             <div className="font-display font-black text-2xl md:text-3xl text-white tabular-nums drop-shadow-[0_0_12px_rgba(255,255,255,0.4)]">
               {stats.score.toLocaleString()}
             </div>
@@ -157,6 +186,25 @@ export const HUD: React.FC<HUDProps> = ({
 
           {/* Utility Buttons */}
           <div className="flex items-center gap-1.5 pointer-events-auto">
+            {/* Daily Missions Toggle Button */}
+            <button
+              type="button"
+              tabIndex={-1}
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onOpenMissions();
+              }}
+              title="Günlük Görevler [G]"
+              aria-label="Günlük Görevler"
+              className="flex items-center gap-1 px-2.5 py-2 rounded-lg bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/50 text-cyan-300 hover:text-white transition-colors cursor-pointer text-xs font-display font-bold shadow-[0_0_10px_rgba(6,182,212,0.25)]"
+            >
+              <Gift className="w-4 h-4 text-cyan-400" />
+              <span className="hidden md:inline">GÖREVLER</span>
+              <span className="px-1 py-0.2 rounded-full bg-cyan-500 text-slate-950 text-[10px] font-black">
+                {missions.filter((m) => m.completed).length}/{missions.length}
+              </span>
+            </button>
+
             <button
               type="button"
               tabIndex={-1}

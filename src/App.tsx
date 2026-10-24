@@ -1,12 +1,21 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { GameEngine } from './game/engine';
-import { GameStatus, Perk, PlayerState, RunStats, ShipClassId } from './game/types';
+import {
+  ActiveMissionBuffs,
+  DailyMission,
+  GameStatus,
+  Perk,
+  PlayerState,
+  RunStats,
+  ShipClassId,
+} from './game/types';
 import { SHIP_CLASSES } from './game/constants';
 import { soundEngine } from './game/audio';
 import { TitleScreen } from './components/TitleScreen';
 import { HUD } from './components/HUD';
 import { PerkModal } from './components/PerkModal';
 import { StatusModals } from './components/StatusModals';
+import { DailyMissionModal } from './components/DailyMissionModal';
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -17,6 +26,18 @@ export default function App() {
   const [perkChoices, setPerkChoices] = useState<Perk[]>([]);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [currentWave, setCurrentWave] = useState<number>(1);
+
+  // Daily Missions state
+  const [dailyMissions, setDailyMissions] = useState<DailyMission[]>([]);
+  const [activeBuffs, setActiveBuffs] = useState<ActiveMissionBuffs>({
+    scoreMultiplier: 1.0,
+    bonusMaxHp: 0,
+    bonusMaxShield: 0,
+    speedMultiplier: 1.0,
+    damageMultiplier: 1.0,
+  });
+  const [isMissionsOpen, setIsMissionsOpen] = useState<boolean>(false);
+  const [missionAlert, setMissionAlert] = useState<DailyMission | null>(null);
 
   const [playerState, setPlayerState] = useState<PlayerState>(() => ({
     x: 1300,
@@ -85,6 +106,14 @@ export default function App() {
       onPlayerUpdate: (player) => setPlayerState(player),
       onPerkSelectionRequired: (perks) => setPerkChoices(perks),
       onWaveStart: (wave) => setCurrentWave(wave),
+      onMissionsUpdate: (missions, buffs) => {
+        setDailyMissions(missions);
+        setActiveBuffs(buffs);
+      },
+      onMissionCompletedAlert: (mission) => {
+        setMissionAlert(mission);
+        setTimeout(() => setMissionAlert(null), 4000);
+      },
     });
     engineRef.current = engine;
     engine.startLoop();
@@ -100,6 +129,17 @@ export default function App() {
       engine.destroy();
     };
   }, [handleResize]);
+
+  // Global 'g' key shortcut for daily missions
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.key === 'g' || e.key === 'G') && gameStatus !== 'title') {
+        setIsMissionsOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [gameStatus]);
 
   const handleStartGame = () => {
     if (engineRef.current) {
@@ -151,6 +191,12 @@ export default function App() {
     }
   };
 
+  const handleClaimMission = (missionId: string) => {
+    if (engineRef.current) {
+      engineRef.current.claimMission(missionId);
+    }
+  };
+
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-slate-950 font-sans">
       {/* 60 FPS Canvas */}
@@ -167,6 +213,9 @@ export default function App() {
           onSelectClass={handleSelectClass}
           onStart={handleStartGame}
           highScore={engineRef.current?.stats.highScore || 0}
+          missions={dailyMissions}
+          buffs={activeBuffs}
+          onOpenMissions={() => setIsMissionsOpen(true)}
         />
       )}
 
@@ -178,6 +227,10 @@ export default function App() {
           currentWave={currentWave}
           shipClass={SHIP_CLASSES[selectedClass]}
           isMuted={isMuted}
+          missions={dailyMissions}
+          buffs={activeBuffs}
+          onOpenMissions={() => setIsMissionsOpen(true)}
+          missionAlert={missionAlert}
           onToggleMute={handleToggleMute}
           onPause={handlePause}
           onRestart={handleRestart}
@@ -187,6 +240,16 @@ export default function App() {
       {/* Perk Selection Modal */}
       {gameStatus === 'perk_selection' && (
         <PerkModal perks={perkChoices} onSelect={handleSelectPerk} />
+      )}
+
+      {/* Daily Missions Modal */}
+      {isMissionsOpen && (
+        <DailyMissionModal
+          missions={dailyMissions}
+          buffs={activeBuffs}
+          onClose={() => setIsMissionsOpen(false)}
+          onClaim={handleClaimMission}
+        />
       )}
 
       {/* Status Modals: Paused, Victory, Game Over */}

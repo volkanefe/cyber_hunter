@@ -18,9 +18,29 @@ import {
   RunStats,
   ShipClass,
   ShipClassId,
+  ActiveMissionBuffs,
+  DailyMission,
+  MissionEvent,
+  CelestialGalaxy,
+  Planet,
 } from './types';
 import { ParticlePool } from './particles';
 import { soundEngine } from './audio';
+import {
+  calculateActiveMissionBuffs,
+  claimMissionReward,
+  loadSavedMissions,
+  saveMissions,
+  updateMissionProgress,
+} from './missions';
+import {
+  createDefaultGalaxies,
+  createDefaultPlanets,
+  drawGalaxy,
+  drawPlanet,
+  isPlayerInPlanetOrbit,
+  updatePlanetScan,
+} from './celestial';
 
 export interface EngineCallbacks {
   onStateChange: (state: GameStatus) => void;
@@ -28,6 +48,8 @@ export interface EngineCallbacks {
   onPlayerUpdate: (player: PlayerState) => void;
   onPerkSelectionRequired: (perks: Perk[]) => void;
   onWaveStart: (wave: number) => void;
+  onMissionsUpdate?: (missions: DailyMission[], buffs: ActiveMissionBuffs) => void;
+  onMissionCompletedAlert?: (mission: DailyMission) => void;
 }
 
 export class GameEngine {
@@ -68,6 +90,21 @@ export class GameEngine {
     perks: [],
   };
 
+  // Daily Missions & Active Buffs
+  public dailyMissions: DailyMission[] = [];
+  public activeBuffs: ActiveMissionBuffs = {
+    scoreMultiplier: 1.0,
+    bonusMaxHp: 0,
+    bonusMaxShield: 0,
+    speedMultiplier: 1.0,
+    damageMultiplier: 1.0,
+  };
+  private survivalTimerAccumulator: number = 0;
+
+  // Celestial Bodies: Galaxies and Planets
+  public galaxies: CelestialGalaxy[] = createDefaultGalaxies();
+  public planets: Planet[] = createDefaultPlanets();
+
   // Screen Shake & Hitstop
   private trauma: number = 0;
   private hitstopTimer: number = 0;
@@ -92,11 +129,58 @@ export class GameEngine {
     this.callbacks = callbacks;
     this.particles = new ParticlePool();
 
+    // Load missions & active buffs
+    this.dailyMissions = loadSavedMissions();
+    this.activeBuffs = calculateActiveMissionBuffs(this.dailyMissions);
+
     this.player = this.createDefaultPlayer(this.currentShipClass);
     this.initStars();
     this.loadHighScore();
 
     this.setupListeners();
+
+    // Initial notify of missions
+    this.callbacks.onMissionsUpdate?.(this.dailyMissions, this.activeBuffs);
+  }
+
+  public dispatchMissionEvent(event: MissionEvent) {
+    const res = updateMissionProgress(this.dailyMissions, event);
+    this.dailyMissions = res.updatedMissions;
+
+    if (res.newlyCompleted.length > 0) {
+      this.activeBuffs = calculateActiveMissionBuffs(this.dailyMissions);
+      saveMissions(this.dailyMissions);
+
+      for (const m of res.newlyCompleted) {
+        soundEngine.playLevelUp();
+        this.addFloatingText(this.player.x, this.player.y - 60, `GÖREV: ${m.reward.labelTr}!`, '#f59e0b');
+        this.callbacks.onMissionCompletedAlert?.(m);
+      }
+      this.applyActiveBuffsToPlayer();
+    } else {
+      saveMissions(this.dailyMissions);
+    }
+
+    this.callbacks.onMissionsUpdate?.(this.dailyMissions, this.activeBuffs);
+  }
+
+  public claimMission(missionId: string) {
+    this.dailyMissions = claimMissionReward(this.dailyMissions, missionId);
+    this.activeBuffs = calculateActiveMissionBuffs(this.dailyMissions);
+    saveMissions(this.dailyMissions);
+    this.applyActiveBuffsToPlayer();
+    this.callbacks.onMissionsUpdate?.(this.dailyMissions, this.activeBuffs);
+  }
+
+  private applyActiveBuffsToPlayer() {
+    const targetMaxShield = this.currentShipClass.maxShield + this.activeBuffs.bonusMaxShield;
+    if (this.player.maxShield < targetMaxShield) {
+      const diff = targetMaxShield - this.player.maxShield;
+      this.player.maxShield = targetMaxShield;
+      this.player.shield = Math.min(targetMaxShield, this.player.shield + diff);
+    }
+    this.player.speed = Math.round(this.currentShipClass.speed * this.activeBuffs.speedMultiplier);
+    this.player.bulletDamage = Math.round(this.currentShipClass.bulletDamage * this.activeBuffs.damageMultiplier);
   }
 
   private loadHighScore() {
@@ -136,6 +220,10 @@ export class GameEngine {
   }
 
   private createDefaultPlayer(ship: ShipClass): PlayerState {
+    const totalMaxShield = ship.maxShield + this.activeBuffs.bonusMaxShield;
+    const speed = Math.round(ship.speed * this.activeBuffs.speedMultiplier);
+    const bulletDamage = Math.round(ship.bulletDamage * this.activeBuffs.damageMultiplier);
+
     return {
       x: WORLD_BOUNDS.width / 2,
       y: WORLD_BOUNDS.height / 2,
@@ -144,16 +232,16 @@ export class GameEngine {
       angle: 0,
       hp: ship.maxHp,
       maxHp: ship.maxHp,
-      shield: ship.maxShield,
-      maxShield: ship.maxShield,
+      shield: totalMaxShield,
+      maxShield: totalMaxShield,
       shieldRechargeTimer: 0,
-      speed: ship.speed,
+      speed: speed,
       fireRate: ship.fireRate,
       fireCooldown: 0,
       dashCooldown: ship.dashCooldown,
       dashTimer: 0,
       isDashing: false,
-      bulletDamage: ship.bulletDamage,
+      bulletDamage: bulletDamage,
       bulletSpeed: ship.bulletSpeed,
       pierceCount: 0,
       doubleShot: false,
@@ -182,6 +270,12 @@ export class GameEngine {
     this.gems = [];
     this.floatingTexts = [];
     this.particles.clear();
+
+    // Reset planets scan progress
+    for (const p of this.planets) {
+      p.scanned = false;
+      p.scanProgress = 0;
+    }
 
     this.currentWave = 1;
     this.bossSpawned = false;
@@ -377,6 +471,13 @@ export class GameEngine {
 
     this.stats.timeElapsed += dt;
 
+    // Daily mission: survival time tracking
+    this.survivalTimerAccumulator += dt;
+    if (this.survivalTimerAccumulator >= 1.0) {
+      this.survivalTimerAccumulator = 0;
+      this.dispatchMissionEvent({ type: 'time_survived', seconds: this.stats.timeElapsed });
+    }
+
     // Combo timer decay
     if (this.stats.comboTimer > 0) {
       this.stats.comboTimer -= dt;
@@ -420,8 +521,55 @@ export class GameEngine {
     // Spawning waves
     this.updateWaveSpawning(dt);
 
+    // Celestial bodies (Galaxies & Planets)
+    this.updateCelestial(dt);
+
     // Periodically sync UI
     this.callbacks.onPlayerUpdate({ ...this.player });
+  }
+
+  private updateCelestial(dt: number) {
+    // Rotate distant spiral galaxies
+    for (const g of this.galaxies) {
+      g.angle += g.rotationSpeed * dt;
+    }
+
+    // Update planets and orbit scanning
+    for (const p of this.planets) {
+      p.rotation += p.rotationSpeed * dt;
+      if (p.moons) {
+        for (const m of p.moons) {
+          m.angle += m.speed * dt;
+        }
+      }
+
+      const inOrbit = isPlayerInPlanetOrbit(this.player.x, this.player.y, p);
+
+      if (inOrbit) {
+        // Proximity tactical buffs
+        if (p.type === 'gas_giant') {
+          // Magnetosphere: faster shield recharge
+          if (this.player.shield < this.player.maxShield) {
+            this.player.shield = Math.min(this.player.maxShield, this.player.shield + 20 * dt);
+          }
+        } else if (p.type === 'ice') {
+          // Cryo cooling: faster dash recovery
+          if (this.player.dashTimer > 0) {
+            this.player.dashTimer = Math.max(0, this.player.dashTimer - dt * 0.4);
+          }
+        }
+      }
+
+      const scanRes = updatePlanetScan(p, inOrbit, dt);
+      if (scanRes.completedNow) {
+        soundEngine.playLevelUp();
+        this.addFloatingText(this.player.x, this.player.y - 60, `KEŞİF: ${p.nameTr}!`, '#4ade80');
+        this.particles.emitExplosion(p.worldX, p.worldY, p.colorSecondary, 28, 1.4);
+        const earnedScore = Math.round(1500 * this.activeBuffs.scoreMultiplier);
+        this.stats.score += earnedScore;
+        this.dispatchMissionEvent({ type: 'planet_scanned', planetId: p.id });
+      }
+    }
   }
 
   private triggerEmpNova() {
@@ -944,11 +1092,13 @@ export class GameEngine {
     this.stats.comboTimer = 2.5; // combo window
     if (this.stats.combo > this.stats.highestCombo) {
       this.stats.highestCombo = this.stats.combo;
+      this.dispatchMissionEvent({ type: 'combo_reached', combo: this.stats.combo });
     }
 
-    const earnedScore = e.scoreValue * this.stats.combo;
+    const earnedScore = Math.round(e.scoreValue * this.stats.combo * this.activeBuffs.scoreMultiplier);
     this.stats.score += earnedScore;
     this.saveHighScore();
+    this.dispatchMissionEvent({ type: 'enemy_killed' });
 
     soundEngine.playExplosion(e.type === 'titan_boss' || e.type === 'charger');
     this.particles.emitExplosion(e.x, e.y, e.color, e.type === 'titan_boss' ? 60 : 20, 1.3);
@@ -983,6 +1133,7 @@ export class GameEngine {
     }
 
     if (e.type === 'titan_boss') {
+      this.dispatchMissionEvent({ type: 'boss_defeated' });
       // Victory!
       setTimeout(() => {
         soundEngine.playVictory();
@@ -1051,6 +1202,7 @@ export class GameEngine {
           this.addFloatingText(p.x, p.y - 20, 'KALKAN DOLDU', '#06b6d4');
           soundEngine.playPickup();
         }
+        this.dispatchMissionEvent({ type: 'gem_collected' });
         this.gems.splice(i, 1);
       }
     }
@@ -1235,32 +1387,45 @@ export class GameEngine {
     const camX = this.player.x - width / 2 + shakeX;
     const camY = this.player.y - height / 2 + shakeY;
 
-    // Draw Space Background & Starfield
+    // 1. Draw Space Background, Nebulae & Starfield
     this.renderStarfield(ctx, camX, camY, width, height);
 
-    // Draw Arena Boundaries
+    // 2. Draw Distant Celestial Spiral Galaxies
+    for (const g of this.galaxies) {
+      drawGalaxy(ctx, g, camX, camY, width, height);
+    }
+
+    // 3. Draw Celestial Planets with 3D spherical shading, rings and orbit markers
+    for (const p of this.planets) {
+      drawPlanet(ctx, p, camX, camY, this.player.x, this.player.y);
+    }
+
+    // 4. Draw Arena Boundaries
     this.renderArenaBounds(ctx, camX, camY);
 
-    // Draw Gems & Drops
+    // 5. Draw Gems & Drops
     this.renderGems(ctx, camX, camY);
 
-    // Draw Particles
+    // 6. Draw Particles
     this.particles.draw(ctx, camX, camY);
 
-    // Draw Enemy Telegraph Lines & Circles
+    // 7. Draw Enemy Telegraph Lines & Circles
     this.renderTelegraphs(ctx, camX, camY);
 
-    // Draw Enemies
+    // 8. Draw Enemies
     this.renderEnemies(ctx, camX, camY);
 
-    // Draw Bullets
+    // 9. Draw Bullets
     this.renderBullets(ctx, camX, camY);
 
-    // Draw Player Ship
+    // 10. Draw Player Ship
     this.renderPlayer(ctx, camX, camY);
 
-    // Draw Floating Text Popups
+    // 11. Draw Floating Text Popups
     this.renderFloatingTexts(ctx, camX, camY);
+
+    // 12. Draw Tactical Radar Minimap
+    this.renderRadar(ctx, width, height);
   }
 
   private renderStarfield(
@@ -1272,12 +1437,28 @@ export class GameEngine {
   ) {
     // Deep space gradient
     const grad = ctx.createRadialGradient(w / 2, h / 2, 80, w / 2, h / 2, w * 0.7);
-    grad.addColorStop(0, '#0a0f24');
-    grad.addColorStop(1, '#02040a');
+    grad.addColorStop(0, '#090e24');
+    grad.addColorStop(1, '#020308');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, w, h);
 
-    // Stars
+    // Cosmic Nebulae Dust Clouds with translucent cosmic colors
+    const nebulae = [
+      { x: w * 0.2 - camX * 0.05, y: h * 0.25 - camY * 0.05, r: 280, color: 'rgba(168, 85, 247, 0.12)' }, // Purple
+      { x: w * 0.75 - camX * 0.06, y: h * 0.7 - camY * 0.06, r: 320, color: 'rgba(6, 182, 212, 0.10)' }, // Cyan
+      { x: w * 0.45 - camX * 0.04, y: h * 0.85 - camY * 0.04, r: 240, color: 'rgba(236, 72, 153, 0.08)' }, // Magenta
+    ];
+    for (const n of nebulae) {
+      const nGrad = ctx.createRadialGradient(n.x, n.y, 10, n.x, n.y, n.r);
+      nGrad.addColorStop(0, n.color);
+      nGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = nGrad;
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Stars with multi-layer depth
     ctx.save();
     for (const star of this.stars) {
       const screenX = ((star.x - camX * star.speed) % w + w) % w;
@@ -1288,6 +1469,70 @@ export class GameEngine {
       ctx.arc(screenX, screenY, star.size, 0, Math.PI * 2);
       ctx.fill();
     }
+    ctx.restore();
+  }
+
+  private renderRadar(ctx: CanvasRenderingContext2D, screenW: number, screenH: number) {
+    const radarSize = 130;
+    const padding = 16;
+    const rx = padding;
+    const ry = screenH - radarSize - padding;
+
+    ctx.save();
+    // Radar backdrop
+    ctx.fillStyle = 'rgba(5, 8, 20, 0.8)';
+    ctx.strokeStyle = 'rgba(6, 182, 212, 0.4)';
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(rx, ry, radarSize, radarSize);
+    ctx.strokeRect(rx, ry, radarSize, radarSize);
+
+    // Crosshairs
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.beginPath();
+    ctx.moveTo(rx + radarSize / 2, ry);
+    ctx.lineTo(rx + radarSize / 2, ry + radarSize);
+    ctx.moveTo(rx, ry + radarSize / 2);
+    ctx.lineTo(rx + radarSize, ry + radarSize / 2);
+    ctx.stroke();
+
+    const scale = radarSize / WORLD_BOUNDS.width;
+
+    // Draw Planets on radar
+    for (const p of this.planets) {
+      const px = rx + p.worldX * scale;
+      const py = ry + p.worldY * scale;
+      ctx.fillStyle = p.scanned ? '#4ade80' : p.colorBase;
+      ctx.beginPath();
+      ctx.arc(px, py, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Draw Enemies on radar
+    for (const e of this.enemies) {
+      const ex = rx + e.x * scale;
+      const ey = ry + e.y * scale;
+      ctx.fillStyle = e.type === 'titan_boss' ? '#f43f5e' : '#f97316';
+      ctx.beginPath();
+      ctx.arc(ex, ey, e.type === 'titan_boss' ? 4 : 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Draw Player dot (pulsing cyan)
+    const plx = rx + this.player.x * scale;
+    const ply = ry + this.player.y * scale;
+    ctx.fillStyle = '#38bdf8';
+    ctx.shadowColor = '#38bdf8';
+    ctx.shadowBlur = 4;
+    ctx.beginPath();
+    ctx.arc(plx, ply, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Radar title
+    ctx.font = '700 9px "Orbitron", sans-serif';
+    ctx.fillStyle = '#64748b';
+    ctx.textAlign = 'left';
+    ctx.fillText('SEKTÖR RADARI', rx + 6, ry + 12);
+
     ctx.restore();
   }
 

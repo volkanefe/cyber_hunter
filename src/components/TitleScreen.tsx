@@ -1,13 +1,16 @@
 import React, { useEffect } from 'react';
 import { SHIP_CLASSES } from '../game/constants';
-import { ShipClassId } from '../game/types';
-import { Shield, Zap, Wind, Crosshair } from 'lucide-react';
+import { ActiveMissionBuffs, DailyMission, ShipClassId } from '../game/types';
+import { Shield, Zap, Wind, Gift, Sparkles } from 'lucide-react';
 
 interface TitleScreenProps {
   selectedClass: ShipClassId;
   onSelectClass: (id: ShipClassId) => void;
   onStart: () => void;
   highScore: number;
+  missions: DailyMission[];
+  buffs: ActiveMissionBuffs;
+  onOpenMissions: () => void;
 }
 
 export const TitleScreen: React.FC<TitleScreenProps> = ({
@@ -15,31 +18,59 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onSelectClass,
   onStart,
   highScore,
+  missions,
+  buffs,
+  onOpenMissions,
 }) => {
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         onStart();
+      } else if (e.key === 'g' || e.key === 'G') {
+        onOpenMissions();
       }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [onStart]);
+  }, [onStart, onOpenMissions]);
+
+  const completedCount = missions.filter((m) => m.completed).length;
+  const hasActiveBuffs =
+    buffs.scoreMultiplier > 1.0 ||
+    buffs.bonusMaxShield > 0 ||
+    buffs.speedMultiplier > 1.0 ||
+    buffs.damageMultiplier > 1.0;
 
   return (
     <div className="fixed inset-0 z-30 flex flex-col justify-between items-center p-6 md:p-10 pointer-events-auto bg-slate-950/70 backdrop-blur-xs select-none">
-      {/* Top Banner / Highscore */}
-      <div className="w-full max-w-4xl flex justify-between items-center text-xs tracking-widest uppercase text-cyan-400/80 font-display">
-        <div className="flex items-center gap-2">
+      {/* Top Banner / Highscore & Daily Missions Button */}
+      <div className="w-full max-w-4xl flex justify-between items-center text-xs tracking-widest uppercase font-display">
+        <div className="flex items-center gap-2 text-cyan-400/80">
           <span className="inline-block w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
           <span>SİBER SAVAŞ PROTOKOLÜ v2.6</span>
         </div>
-        <div>
-          EN YÜKSEK SKOR:{' '}
-          <span className="text-white text-sm font-bold tabular-nums">
-            {highScore.toLocaleString()}
-          </span>
+
+        <div className="flex items-center gap-3">
+          {/* Daily Missions Action Button */}
+          <button
+            type="button"
+            onClick={onOpenMissions}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/50 text-cyan-300 text-xs font-display font-bold shadow-[0_0_15px_rgba(6,182,212,0.3)] hover:shadow-[0_0_20px_rgba(6,182,212,0.5)] transition-all cursor-pointer"
+          >
+            <Gift className="w-4 h-4 text-cyan-400" />
+            <span>GÜNLÜK GÖREVLER</span>
+            <span className="px-1.5 py-0.2 rounded-full bg-cyan-500 text-slate-950 text-[10px] font-black">
+              {completedCount}/{missions.length}
+            </span>
+          </button>
+
+          <div className="text-slate-400">
+            EN YÜKSEK SKOR:{' '}
+            <span className="text-white text-sm font-bold tabular-nums">
+              {highScore.toLocaleString()}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -58,6 +89,20 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           <p className="text-sm md:text-base text-cyan-200/80 tracking-widest font-semibold mt-1">
             2D NEON UZAY ROGUELITE ARENASI
           </p>
+
+          {/* Active Buffs Pill Banner if any */}
+          {hasActiveBuffs && (
+            <div className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-950/70 border border-cyan-400/50 text-cyan-300 text-xs font-mono font-bold shadow-[0_0_15px_rgba(6,182,212,0.3)]">
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span>GÖREV GÜÇLENDİRMELERİ AKTİF:</span>
+              {buffs.scoreMultiplier > 1.0 && (
+                <span className="text-amber-300">+{Math.round((buffs.scoreMultiplier - 1.0) * 100)}% Skor</span>
+              )}
+              {buffs.bonusMaxShield > 0 && (
+                <span className="text-cyan-300">+{buffs.bonusMaxShield} Kalkan</span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Ship Class Selection Cards */}

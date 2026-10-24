@@ -2,5 +2,7 @@
   "name": "Siber Avcı: 2D Uzay Arenası",
   "description": "2D neon siber uzay roguelite aksiyon oyunu. Geminizi seçin, dalgalarla savaşın, yeteneklerinizi geliştirin ve titan muhafızları alt edin.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

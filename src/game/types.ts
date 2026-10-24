@@ -166,3 +166,95 @@ export interface RunStats {
 }
 
 export type GameStatus = 'title' | 'playing' | 'paused' | 'perk_selection' | 'gameover' | 'victory';
+
+export type MissionType =
+  | 'kill_count'
+  | 'survival_time'
+  | 'reach_combo'
+  | 'collect_gems'
+  | 'clear_waves'
+  | 'explore_planet'
+  | 'defeat_boss';
+
+export interface MissionReward {
+  type: 'score_multiplier' | 'shield_boost' | 'speed_boost' | 'damage_boost';
+  labelTr: string;
+  labelEn: string;
+  value: number;
+  descriptionTr: string;
+}
+
+export interface DailyMission {
+  id: string;
+  type: MissionType;
+  titleTr: string;
+  titleEn: string;
+  descriptionTr: string;
+  descriptionEn: string;
+  target: number;
+  current: number;
+  completed: boolean;
+  claimed: boolean;
+  reward: MissionReward;
+  icon: 'crosshair' | 'clock' | 'zap' | 'shield' | 'award' | 'globe' | 'star';
+  category?: 'daily' | 'sector_bounty' | 'celestial_exploration';
+}
+
+export interface ActiveMissionBuffs {
+  scoreMultiplier: number; // 1.0 default
+  bonusMaxHp: number;
+  bonusMaxShield: number;
+  speedMultiplier: number; // 1.0 default
+  damageMultiplier: number; // 1.0 default
+}
+
+export type MissionEvent =
+  | { type: 'enemy_killed'; count?: number }
+  | { type: 'time_survived'; seconds: number }
+  | { type: 'combo_reached'; combo: number }
+  | { type: 'gem_collected'; count?: number }
+  | { type: 'wave_cleared'; wave: number }
+  | { type: 'planet_scanned'; planetId: string }
+  | { type: 'boss_defeated' };
+
+export interface CelestialGalaxy {
+  id: number;
+  x: number;
+  y: number;
+  radius: number;
+  angle: number;
+  rotationSpeed: number;
+  arms: number;
+  colorCore: string;
+  colorArm: string;
+  parallaxFactor: number;
+}
+
+export interface Planet {
+  id: string;
+  nameTr: string;
+  type: 'gas_giant' | 'lava' | 'ice' | 'cyber_citadel' | 'emerald_terra';
+  worldX: number;
+  worldY: number;
+  radius: number;
+  rotation: number;
+  rotationSpeed: number;
+  colorBase: string;
+  colorSecondary: string;
+  colorAtmosphere: string;
+  hasRings: boolean;
+  ringColor?: string;
+  ringTilt?: number;
+  orbitRadius: number; // radius of influence
+  scanned: boolean;
+  scanProgress: number; // 0 to 1
+  perkEffectTr: string;
+  moons?: Array<{
+    distance: number;
+    radius: number;
+    angle: number;
+    speed: number;
+    color: string;
+  }>;
+}
+

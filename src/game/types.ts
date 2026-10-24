@@ -17,10 +17,38 @@ export interface ShipClass {
   trailColor: string;
 }
 
+export type WeaponId =
+  | 'plasma_blaster'
+  | 'scatter_cannon'
+  | 'quantum_railgun'
+  | 'vortex_missiles'
+  | 'tesla_arc';
+
+export interface WeaponDef {
+  id: WeaponId;
+  nameTr: string;
+  nameEn: string;
+  descriptionTr: string;
+  fireRate: number; // shots per sec
+  damageMultiplier: number;
+  speedMultiplier: number;
+  radius: number;
+  color: string;
+  burstCount: number;
+  spread: number; // radians
+  pierce: number;
+  homing: boolean;
+  isRocket?: boolean;
+  icon: string;
+}
+
 export type EnemyType =
   | 'swarmer'
   | 'sniper'
   | 'charger'
+  | 'stealth_stalker'
+  | 'shielded_cruiser'
+  | 'drone_carrier'
   | 'titan_boss'
   | 'aegis_sentinel'
   | 'hive_queen'
@@ -51,6 +79,16 @@ export interface Enemy {
   aimY?: number;
   chargeTargetX?: number;
   chargeTargetY?: number;
+  // Advanced Enemy AI & Visual Mechanics
+  hasFrontShield?: boolean;
+  frontShieldHp?: number;
+  frontShieldMaxHp?: number;
+  shieldAngle?: number;
+  shieldArc?: number;
+  stealthAlpha?: number;
+  isCloaked?: boolean;
+  cloakTimer?: number;
+  carrierSpawnTimer?: number;
 }
 
 export interface Bullet {
@@ -67,6 +105,9 @@ export interface Bullet {
   homing: boolean;
   life: number;
   maxLife: number;
+  isRocket?: boolean;
+  trailColor?: string;
+  isArc?: boolean;
 }
 
 export interface Gem {
@@ -174,6 +215,13 @@ export interface PlayerState {
   invulnerabilityTimer: number; // i-frames after taking damage
   recentDamageGhost: number; // for trailing damage bar
   ghostFadeTimer: number;
+  // Weapons & Wing-Mounted Rocket System
+  currentWeapon: WeaponId;
+  unlockedWeapons: WeaponId[];
+  wingRocketCooldown: number;
+  wingRocketMaxCooldown: number;
+  wingRocketAlternate: boolean;
+  wingRocketReady: boolean;
 }
 
 export interface RunStats {

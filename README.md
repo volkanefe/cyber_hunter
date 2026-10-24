@@ -40,21 +40,30 @@ Harici ses dosyalarına veya internet bağlantısına ihtiyaç duymayan, saf **W
 
 ---
 
-### 3. 🛸 Gemi Sınıfları ve Silah Cephaneliği
-- **Gemi Sınıfları**:
-  - **Dengeli Avcı**: Hız ve dayanıklılık dengesi.
-  - **Çevik Hayalet**: Yüksek hareket kabiliyeti ve hızlı atılma soğuma süresi.
-  - **Ağır Dretnot**: Yüksek gövde zırhı ve geniş kalkan kapasitesi.
-- **Gelişmiş Silahlar**:
-  - *İkiz Foton Lazer*: Hızlı standart atışlar.
-  - *Plazma Topu*: Alan etkili ağır mermiler.
-  - *Yayılan Saçma Lazer*: Yakın mesafe geniş koni atışı.
-  - *Güdümlü Roketler*: Düşmanları takip eden patlayıcı füzeler.
-  - *Raylı Top (Railgun)*: Düşman hatlarını delip geçen yüksek enerjili ışın.
+### 3. 🛸 Aerodinamik Kanatlar, Kanat Roketleri ve Silah Cephaneliği
+- **Aerodinamik Kanat Yapısı & Kanat Roket Bataryaları**:
+  - Oyuncu gemisi artık çift yönlü açılı siber kanatlara (swept-back aerofoils) ve kanat uçlarına monte edilmiş çift roket podlarına sahiptir.
+  - **Kanat Roketleri**: Sol ve sağ kanat uçlarından dönüşümlü olarak ateşlenen, duman izi bırakan ve düşmanları kovalayarak alan etkili patlama hasarı veren yüksek güçlü güdümlü roketler! Roketler hazır olduğunda kanat uçlarındaki savaş başlıkları turuncu/neon parıltıyla yanar.
+- **5 Farklı Değiştirilebilir Siber Silah**:
+  1. *İkiz Foton Lazer*: Yüksek atış hızlı, dengeli standart lazer topları.
+  2. *Plazma Dağıtıcı (Pompalı)*: 5'li koni şeklinde yayılan, yakın mesafede yıkıcı ağır plazma saçması.
+  3. *Kuantum Raylı Top (Railgun)*: Düşman hatlarını ve asteroidleri delip geçen hiper-hızlı kuantum ışını.
+  4. *Girdap Güdümlü Füzeleri*: Düşmanları akıllıca takip eden mikro füze salvosu.
+  5. *Tesla İyon Arkı*: Düşman kalkanlarını hızla eriten elektrik arkları.
+- **Hızlı Silah Değiştirme**: `[Q]` / `[E]` veya `[1-5]` tuşlarıyla ya da arayüzdeki silah rozetine tıklayarak silahlar arasında anında geçiş yapabilirsiniz.
 
 ---
 
-### 4. 🌀 Roguelite Yükseltmeleri ve Günlük Görevler
+### 4. 👾 Gelişmiş Düşman Filosu ve Yeni Gemi Sınıfları
+Standart sürü böcekleri ve keskin nişancıların yanı sıra filoya yeni elit düşman gemileri katıldı:
+- **Gizli Avcı (Stealth Stalker)**: Kamuflaj kalkanını açarak neredeyse görünmez hale gelir, arkadan yanaşır ve 3'lü plazma yelpazesi ateşleyerek geri çekilir.
+- **Kalkanlı Kruvazör (Shielded Cruiser)**: Ön cephesinde kurşun geçirmez enerji bariyeri taşır; oyuncunun mermilerini sektirir. Sadece arkadan veya yan kanatlardan vurulabilir ya da patlayıcı roketlerle aşılabilir!
+- **Dron Taşıyıcı Ana Gemi (Drone Carrier)**: Uzaktan oyuncuyu takip eden, üzerinde çift iniş pisti ve uyarı ışıkları barındıran devasa taşıyıcı gemi. Düzenli aralıklarla kamikaze sürü dronları fırlatır!
+- **Aegis-7 Muhafız Dretnotu & Kovan Kraliçesi & Omega Primus**: Zorlu sektör sonu boss karşılaşmaları.
+
+---
+
+### 5. 🌀 Roguelite Yükseltmeleri ve Günlük Görevler
 - **Seviye Atlama**: Düşmanlardan düşen enerji kürelerini toplayarak seviye atlayın; her seviyede sunulan 3 rastgele yükseltme kartından birini seçin (ör. Artırılmış Hasar, Hızlı Kalkan Yenilenmesi, İlave Atılma Yükü, Hareket Hızı).
 - **Gezegen Etkileşimi & Madencilik**: Haritada bulunan gezegenlerin çekim alanına girerek kaynak toplayabilir veya gövdenizi onarabilirsiniz.
 - **Günlük Görev Sistemi**: Her gün yenilenen görevleri tamamlayarak kalıcı güçlendirme (buff) ödülleri kazanın.
@@ -64,17 +73,32 @@ Harici ses dosyalarına veya internet bağlantısına ihtiyaç duymayan, saf **W
 
 ## 🎮 Kontroller
 
+### 💻 Masaüstü / Klavye & Fare:
 | Tuş / Eylem | İşlev |
 | :--- | :--- |
 | **W, A, S, D** veya **Yön Tuşları** | Gemiyi hareket ettirir ve yönlendirir |
 | **Fare Hareketi** | Nişan alma açısını belirler |
-| **Sol Tık** veya **Boşluk (SPACE)** | Seçili silahla ateş eder |
+| **Sol Tık** veya **Boşluk (SPACE)** | Seçili silahla ateş eder (Ayrıca kanat roketlerini ateşler) |
+| **Q / E** veya **1 - 5 Tuşları** | **Silah Değiştir** — 5 farklı silah tipi arasında döngü |
 | **Shift** veya **Sağ Tık** | **Atılma (Dash)** — Hız patlaması ve geçici dokunulmazlık |
 | **C** | Galaktik Sefer Haritasını açar / kapatır |
-| **M** | Müziği açar / kapatır |
+| **M** | Ses efektlerini açar / kapatır |
+| **B** | Fon müziğini açar / kapatır |
 | **N** | Sonraki müzik parçasına geçer (5 parça arasında döngü) |
 | **P** veya **ESC** | Oyunu duraklatır (Pause) |
-| **F** | Gezegen yörüngesinde iken tarama / kaynak toplama başlatır |
+| **G** | Günlük Görevler panelini açar / kapatır |
+
+### 📱 Mobil / Dokunmatik Ekran:
+| Dokunmatik Kontrol | İşlev |
+| :--- | :--- |
+| **Sol Sanal Joystick (Mavi)** | **360° İlerleme & Dönüş**: Gemiyi istenen yöne çevirir ve o doğrultuda iter. |
+| **Sağ Sanal Joystick (Kırmızı)** | **360° Bağımsız Nişan & Kesintisiz Ateş**: Sürüklenen açıya döner ve sürekli ateş açar. |
+| **SİLAH Butonu (Renkli Dönen İkon)** | Dokunulduğunda aktif silahı değiştirir (Foton Lazer, Dağıtıcı, Raylı, Füzeler, Tesla). |
+| **ATEŞ Butonu (Kırmızı Alev)** | Basılı tutulduğunda seçili silahı ve kanat roketlerini hedefe yönlendirir. |
+| **ATILMA Butonu (Sarı Şimşek)** | Dokunulduğunda hız patlaması ve geçici dokunulmazlık (Dash) tetikler. |
+| **ROKET GÖSTERGESİ (Pembe Rozet)** | Kanat roketlerinin dolum durumunu ve hazır olduğunu anlık gösterir. |
+| **OTO NİŞAN / SERBEST Butonu** | Otomatik hedef kilitleme (en yakın düşman) ile manuel yönlendirme arasında geçiş yapar. |
+| **Ekrana Dokunma** | Ekranda herhangi bir noktaya dokunulduğunda gemi doğrudan o noktaya nişan alır. |
 
 ---
 

@@ -18,6 +18,8 @@ import { PerkModal } from './components/PerkModal';
 import { StatusModals } from './components/StatusModals';
 import { DailyMissionModal } from './components/DailyMissionModal';
 import { SectorSelectModal } from './components/SectorSelectModal';
+import { MobileControls } from './components/MobileControls';
+import { detectTouchDevice } from './game/touchControls';
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -57,6 +59,13 @@ export default function App() {
   const [isMissionsOpen, setIsMissionsOpen] = useState<boolean>(false);
   const [missionAlert, setMissionAlert] = useState<DailyMission | null>(null);
 
+  // Mobile Touch Controls & Auto-Aim State
+  const [showMobileControls, setShowMobileControls] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return detectTouchDevice() || window.innerWidth <= 1024;
+  });
+  const [autoAimEnabled, setAutoAimEnabled] = useState<boolean>(true);
+
   const [playerState, setPlayerState] = useState<PlayerState>(() => ({
     x: 1300,
     y: 1300,
@@ -89,6 +98,18 @@ export default function App() {
     invulnerabilityTimer: 2.0,
     recentDamageGhost: SHIP_CLASSES.vanguard.maxHp,
     ghostFadeTimer: 0,
+    currentWeapon: 'plasma_blaster',
+    unlockedWeapons: [
+      'plasma_blaster',
+      'scatter_cannon',
+      'quantum_railgun',
+      'vortex_missiles',
+      'tesla_arc',
+    ],
+    wingRocketCooldown: 0,
+    wingRocketMaxCooldown: 1.8,
+    wingRocketAlternate: false,
+    wingRocketReady: true,
   }));
 
   const [runStats, setRunStats] = useState<RunStats>(() => ({
@@ -283,6 +304,25 @@ export default function App() {
     }
   };
 
+  const handleToggleMobileControls = () => {
+    setShowMobileControls((prev) => !prev);
+  };
+
+  const handleToggleAutoAim = () => {
+    if (engineRef.current) {
+      const next = engineRef.current.toggleAutoAim();
+      setAutoAimEnabled(next);
+    } else {
+      setAutoAimEnabled((prev) => !prev);
+    }
+  };
+
+  const handleCycleWeapon = useCallback(() => {
+    if (engineRef.current) {
+      engineRef.current.cycleWeapon();
+    }
+  }, []);
+
   const totalCampaignStars = sectorProgress.reduce((sum, p) => sum + (p.stars || 0), 0);
   const currentSectorDef = engineRef.current?.currentSector || CAMPAIGN_SECTORS[0];
 
@@ -292,7 +332,7 @@ export default function App() {
       <canvas
         ref={canvasRef}
         data-testid="game-canvas"
-        className="absolute inset-0 block w-full h-full cursor-crosshair"
+        className="absolute inset-0 block w-full h-full cursor-crosshair touch-none"
       />
 
       {/* Title Screen */}
@@ -332,6 +372,8 @@ export default function App() {
           combatIntensity={combatIntensity}
           currentBpm={currentBpm}
           currentTrackName={currentTrackName}
+          isMobileControlsVisible={showMobileControls}
+          onToggleMobileControls={handleToggleMobileControls}
           onOpenMissions={() => setIsMissionsOpen(true)}
           onOpenSectorMap={() => setIsSectorMapOpen(true)}
           missionAlert={missionAlert}
@@ -340,6 +382,25 @@ export default function App() {
           onNextTrack={handleCycleMusicTrack}
           onPause={handlePause}
           onRestart={handleRestart}
+          onCycleWeapon={handleCycleWeapon}
+        />
+      )}
+
+      {/* Mobile Touch Virtual Controls Overlay */}
+      {showMobileControls && (gameStatus === 'playing' || gameStatus === 'paused') && (
+        <MobileControls
+          engine={engineRef.current}
+          dashReady={playerState.dashTimer <= 0}
+          dashCooldownPct={
+            playerState.dashTimer <= 0
+              ? 100
+              : Math.max(0, (1 - playerState.dashTimer / playerState.dashCooldown) * 100)
+          }
+          autoAimEnabled={autoAimEnabled}
+          onToggleAutoAim={handleToggleAutoAim}
+          onCycleWeapon={handleCycleWeapon}
+          currentWeaponId={playerState.currentWeapon}
+          wingRocketReady={playerState.wingRocketReady || playerState.wingRocketCooldown <= 0}
         />
       )}
 

@@ -284,8 +284,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       </div>
 
       {/* Control Hints Footer */}
-      <div className="w-full text-center text-xs text-slate-400 tracking-wider">
-        <span>WASD Hareket · Boşluk / Fare Ateş · Shift Atılma · C Bölüm Haritası · N Sonraki Müzik · B Müzik Aç/Kapa · G Görevler</span>
+      <div className="w-full text-center text-xs text-slate-400 tracking-wider flex flex-col items-center gap-1">
+        <span className="hidden sm:inline">Klavye: WASD Hareket · Boşluk / Sol Tık Ateş · Shift Atılma · C Bölüm Haritası · N Müzik Değiştir · B Müzik Aç/Kapa · G Görevler</span>
+        <span className="text-cyan-400 font-medium">📱 Dokunmatik / Mobil: Sol Sanal Joystick ile İlerle & Dön · Sağ Joystick ile Nişan Alıp Ateş Et · Atılma & Oto-Nişan Butonları</span>
       </div>
     </div>
   );

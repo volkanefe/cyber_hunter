@@ -109,6 +109,12 @@ test('applyPerk updates player state attributes properly', () => {
     invulnerabilityTimer: 0,
     recentDamageGhost: 0,
     ghostFadeTimer: 0,
+    currentWeapon: 'plasma_blaster',
+    unlockedWeapons: ['plasma_blaster'],
+    wingRocketCooldown: 0,
+    wingRocketMaxCooldown: 1.8,
+    wingRocketAlternate: false,
+    wingRocketReady: true,
   };
 
   applyPerk(mockPlayer, 'double_barrel');

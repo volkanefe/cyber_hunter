@@ -10,6 +10,7 @@ import {
 import {
   Bullet,
   Enemy,
+  EnemyType,
   FloatingText,
   Gem,
   GameStatus,
@@ -50,6 +51,15 @@ import {
   isPlayerInPlanetOrbit,
   updatePlanetScan,
 } from './celestial';
+import { resolveMobileAimAngle } from './touchControls';
+import {
+  ALL_WEAPONS,
+  getWeaponDef,
+  getNextWeapon,
+  calculateWeaponVolley,
+  createWingMountedRocket,
+} from './weapons';
+import { WeaponId, WeaponDef } from './types';
 
 export interface SectorVictoryData {
   sector: SectorDef;
@@ -138,6 +148,13 @@ export class GameEngine {
   private mouseWorldX: number = 0;
   private mouseWorldY: number = 0;
   private isMouseDown: boolean = false;
+
+  // Mobile Touch Inputs
+  public touchMoveX: number = 0;
+  public touchMoveY: number = 0;
+  public touchAimAngle: number | null = null;
+  public isTouchFiring: boolean = false;
+  public autoAim: boolean = true;
 
   // Starfield Parallax
   private stars: Array<{ x: number; y: number; size: number; speed: number; alpha: number }> = [];
@@ -280,7 +297,40 @@ export class GameEngine {
       invulnerabilityTimer: 2.5,
       recentDamageGhost: ship.maxHp,
       ghostFadeTimer: 0,
+      currentWeapon: 'plasma_blaster',
+      unlockedWeapons: [
+        'plasma_blaster',
+        'scatter_cannon',
+        'quantum_railgun',
+        'vortex_missiles',
+        'tesla_arc',
+      ],
+      wingRocketCooldown: 0,
+      wingRocketMaxCooldown: 1.8,
+      wingRocketAlternate: false,
+      wingRocketReady: true,
     };
+  }
+
+  public cycleWeapon(): WeaponDef {
+    this.player.currentWeapon = getNextWeapon(
+      this.player.currentWeapon,
+      this.player.unlockedWeapons
+    );
+    soundEngine.playPickup();
+    const active = getWeaponDef(this.player.currentWeapon);
+    this.addFloatingText(this.player.x, this.player.y - 50, active.nameTr, active.color);
+    return active;
+  }
+
+  public setWeapon(weaponId: WeaponId): WeaponDef {
+    this.player.currentWeapon = weaponId;
+    soundEngine.playPickup();
+    return getWeaponDef(weaponId);
+  }
+
+  public getActiveWeapon(): WeaponDef {
+    return getWeaponDef(this.player.currentWeapon);
   }
 
   public selectSector(sectorId: number) {
@@ -370,6 +420,12 @@ export class GameEngine {
     this.canvas.addEventListener('mousedown', this.handleMouseDown);
     this.canvas.addEventListener('mouseup', this.handleMouseUp);
     this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    // Direct Canvas Touch Interaction
+    this.canvas.addEventListener('touchstart', this.handleCanvasTouchStart, { passive: false });
+    this.canvas.addEventListener('touchmove', this.handleCanvasTouchMove, { passive: false });
+    this.canvas.addEventListener('touchend', this.handleCanvasTouchEnd, { passive: false });
+    this.canvas.addEventListener('touchcancel', this.handleCanvasTouchEnd, { passive: false });
   }
 
   public destroy() {
@@ -378,6 +434,94 @@ export class GameEngine {
     window.removeEventListener('keyup', this.handleKeyUp);
     window.removeEventListener('blur', this.handleBlur);
     document.removeEventListener('visibilitychange', this.handleBlur);
+
+    this.canvas.removeEventListener('mousemove', this.handleMouseMove);
+    this.canvas.removeEventListener('mousedown', this.handleMouseDown);
+    this.canvas.removeEventListener('mouseup', this.handleMouseUp);
+    this.canvas.removeEventListener('touchstart', this.handleCanvasTouchStart);
+    this.canvas.removeEventListener('touchmove', this.handleCanvasTouchMove);
+    this.canvas.removeEventListener('touchend', this.handleCanvasTouchEnd);
+    this.canvas.removeEventListener('touchcancel', this.handleCanvasTouchEnd);
+  }
+
+  private handleCanvasTouchStart = (e: TouchEvent) => {
+    if (e.touches.length > 0) {
+      const touch = e.touches[0];
+      const rect = this.canvas.getBoundingClientRect();
+      const camX = this.player.x - this.canvas.width / 2;
+      const camY = this.player.y - this.canvas.height / 2;
+      this.mouseWorldX = touch.clientX - rect.left + camX;
+      this.mouseWorldY = touch.clientY - rect.top + camY;
+      this.isMouseDown = true;
+    }
+  };
+
+  private handleCanvasTouchMove = (e: TouchEvent) => {
+    if (e.touches.length > 0) {
+      const touch = e.touches[0];
+      const rect = this.canvas.getBoundingClientRect();
+      const camX = this.player.x - this.canvas.width / 2;
+      const camY = this.player.y - this.canvas.height / 2;
+      this.mouseWorldX = touch.clientX - rect.left + camX;
+      this.mouseWorldY = touch.clientY - rect.top + camY;
+    }
+  };
+
+  private handleCanvasTouchEnd = () => {
+    this.isMouseDown = false;
+  };
+
+  // Mobile Touch Input Accessors
+  public setTouchMovement(moveX: number, moveY: number) {
+    this.touchMoveX = moveX;
+    this.touchMoveY = moveY;
+  }
+
+  public setTouchAim(angle: number | null) {
+    this.touchAimAngle = angle;
+  }
+
+  public setTouchFiring(firing: boolean) {
+    this.isTouchFiring = firing;
+  }
+
+  public setAutoAim(enabled: boolean) {
+    this.autoAim = enabled;
+  }
+
+  public toggleAutoAim(): boolean {
+    this.autoAim = !this.autoAim;
+    return this.autoAim;
+  }
+
+  public isAutoAimEnabled(): boolean {
+    return this.autoAim;
+  }
+
+  public isPlayerNearPlanet(): Planet | null {
+    for (const p of this.planets) {
+      if (isPlayerInPlanetOrbit(this.player.x, this.player.y, p)) {
+        return p;
+      }
+    }
+    return null;
+  }
+
+  public getNearestEnemyAngle(): number | null {
+    if (this.enemies.length === 0) return null;
+    let nearestDistSq = Infinity;
+    let nearest: Enemy | null = null;
+    for (const e of this.enemies) {
+      const dx = e.x - this.player.x;
+      const dy = e.y - this.player.y;
+      const distSq = dx * dx + dy * dy;
+      if (distSq < nearestDistSq && distSq < 1100 * 1100) {
+        nearestDistSq = distSq;
+        nearest = e;
+      }
+    }
+    if (!nearest) return null;
+    return Math.atan2(nearest.y - this.player.y, nearest.x - this.player.x);
   }
 
   private handleKeyDown = (e: KeyboardEvent) => {
@@ -408,6 +552,16 @@ export class GameEngine {
     if (e.key === ' ' || e.key === 'Shift') {
       this.triggerDash();
     }
+
+    if (e.key === 'q' || e.key === 'Q' || e.key === 'e' || e.key === 'E') {
+      this.cycleWeapon();
+    }
+
+    if (e.key === '1') this.setWeapon('plasma_blaster');
+    if (e.key === '2') this.setWeapon('scatter_cannon');
+    if (e.key === '3') this.setWeapon('quantum_railgun');
+    if (e.key === '4') this.setWeapon('vortex_missiles');
+    if (e.key === '5') this.setWeapon('tesla_arc');
   };
 
   private handleKeyUp = (e: KeyboardEvent) => {
@@ -441,7 +595,7 @@ export class GameEngine {
     }
   };
 
-  private triggerDash() {
+  public triggerDash() {
     if (this.status !== 'playing') return;
     if (this.player.dashTimer > 0) return;
 
@@ -679,7 +833,7 @@ export class GameEngine {
   private updatePlayer(dt: number) {
     const p = this.player;
 
-    // Movement Intent
+    // Movement Intent (Keyboard + Touch Virtual Joystick)
     let moveX = 0;
     let moveY = 0;
     if (this.keys['w'] || this.keys['arrowup']) moveY -= 1;
@@ -687,15 +841,33 @@ export class GameEngine {
     if (this.keys['a'] || this.keys['arrowleft']) moveX -= 1;
     if (this.keys['d'] || this.keys['arrowright']) moveX += 1;
 
-    // Aim angle towards mouse cursor in world
-    p.angle = Math.atan2(this.mouseWorldY - p.y, this.mouseWorldX - p.x);
+    if (this.touchMoveX !== 0 || this.touchMoveY !== 0) {
+      moveX = this.touchMoveX;
+      moveY = this.touchMoveY;
+    }
+
+    // Aim Angle & Facing Direction (Touch aim stick > Auto-aim lock when firing > Movement heading > Mouse)
+    const isFiring = this.isMouseDown || this.keys[' '] || this.isTouchFiring;
+    const nearestEnemyAngle = this.getNearestEnemyAngle();
+    const fallbackMouseAngle = Math.atan2(this.mouseWorldY - p.y, this.mouseWorldX - p.x);
+
+    p.angle = resolveMobileAimAngle(
+      this.touchAimAngle,
+      isFiring,
+      this.autoAim,
+      nearestEnemyAngle,
+      moveX,
+      moveY,
+      this.isMouseDown ? fallbackMouseAngle : p.angle
+    );
 
     // Acceleration with inertia
     if (moveX !== 0 || moveY !== 0) {
       const len = Math.hypot(moveX, moveY);
+      const normalizedLen = Math.min(1.0, len);
       const normX = moveX / len;
       const normY = moveY / len;
-      const accel = p.speed * 4.2;
+      const accel = p.speed * 4.2 * normalizedLen;
 
       p.vx += normX * accel * dt;
       p.vy += normY * accel * dt;
@@ -762,48 +934,72 @@ export class GameEngine {
       p.ghostFadeTimer = 0;
     }
 
-    // Weapon firing
+    // Wing-Mounted Rocket Pod Reload Timer
+    p.wingRocketCooldown -= dt;
+    p.wingRocketReady = p.wingRocketCooldown <= 0;
+
+    // Weapon firing (Mouse, Spacebar, or Mobile Touch Fire)
     p.fireCooldown -= dt;
-    if ((this.isMouseDown || this.keys[' ']) && p.fireCooldown <= 0) {
+    if (isFiring && p.fireCooldown <= 0) {
       this.firePlayerWeapon();
-      p.fireCooldown = 1 / p.fireRate;
+      const currentWep = getWeaponDef(p.currentWeapon);
+      p.fireCooldown = 1 / (p.fireRate * (currentWep.fireRate / 5.0));
     }
   }
 
   private firePlayerWeapon() {
     const p = this.player;
-    soundEngine.playLaser();
-
+    const weapon = getWeaponDef(p.currentWeapon);
     const forwardX = Math.cos(p.angle);
     const forwardY = Math.sin(p.angle);
-    const perpX = -forwardY;
-    const perpY = forwardX;
-
-    const baseSpeed = p.bulletSpeed;
     const isHeavy = this.currentShipClass.id === 'dreadnought';
 
-    if (p.doubleShot) {
-      // Twin parallel barrels
-      const offset = 8;
-      const b1X = p.x + perpX * offset + forwardX * 16;
-      const b1Y = p.y + perpY * offset + forwardY * 16;
-      const b2X = p.x - perpX * offset + forwardX * 16;
-      const b2Y = p.y - perpY * offset + forwardY * 16;
-      this.createPlayerBullet(b1X, b1Y, forwardX, forwardY, baseSpeed);
-      this.createPlayerBullet(b2X, b2Y, forwardX, forwardY, baseSpeed);
-      this.particles.emitMuzzleFlash(b1X, b1Y, p.angle, this.currentShipClass.color, isHeavy);
-      this.particles.emitMuzzleFlash(b2X, b2Y, p.angle, this.currentShipClass.color, isHeavy);
+    // Play weapon specific audio
+    if (weapon.id === 'quantum_railgun') {
+      soundEngine.playExplosion(false);
+    } else if (weapon.id === 'vortex_missiles') {
+      soundEngine.playDash();
     } else {
-      const bX = p.x + forwardX * 18;
-      const bY = p.y + forwardY * 18;
-      this.createPlayerBullet(bX, bY, forwardX, forwardY, baseSpeed);
-      this.particles.emitMuzzleFlash(bX, bY, p.angle, this.currentShipClass.color, isHeavy);
+      soundEngine.playLaser();
     }
 
-    // Camera punch for visceral recoil
-    this.trauma = Math.min(1, this.trauma + (isHeavy ? 0.08 : 0.03));
+    // Fire weapon volley
+    const volley = calculateWeaponVolley(weapon, p, this.nextEntityId);
+    this.nextEntityId += volley.length;
+    this.playerBullets.push(...volley);
 
-    // Homing micro-missiles if unlocked
+    for (const b of volley) {
+      this.particles.emitMuzzleFlash(
+        b.x,
+        b.y,
+        p.angle,
+        weapon.color,
+        isHeavy || weapon.id === 'quantum_railgun'
+      );
+    }
+
+    // Camera punch & recoil
+    const recoilKick =
+      weapon.id === 'quantum_railgun' ? 36 : weapon.id === 'scatter_cannon' ? 22 : 12;
+    p.vx -= forwardX * recoilKick;
+    p.vy -= forwardY * recoilKick;
+    this.trauma = Math.min(
+      1,
+      this.trauma + (weapon.id === 'quantum_railgun' ? 0.12 : isHeavy ? 0.08 : 0.03)
+    );
+
+    // --- ACTIVE WING-MOUNTED ROCKET LAUNCH ---
+    // Automatically launches high-explosive seeking rockets from wing pods
+    if (p.wingRocketReady) {
+      p.wingRocketCooldown = p.wingRocketMaxCooldown;
+      p.wingRocketAlternate = !p.wingRocketAlternate;
+      const wingRocket = createWingMountedRocket(p, this.nextEntityId++, p.wingRocketAlternate);
+      this.playerBullets.push(wingRocket);
+      this.particles.emitMuzzleFlash(wingRocket.x, wingRocket.y, p.angle, '#fb923c', true);
+      this.particles.emitThrust(wingRocket.x, wingRocket.y, p.angle, '#f59e0b');
+    }
+
+    // Additional homing micro-missiles if perk unlocked
     if (p.homingCount > 0 && Math.random() < 0.45) {
       const spread = (Math.random() - 0.5) * 0.8;
       const hAngle = p.angle + spread;
@@ -811,8 +1007,8 @@ export class GameEngine {
         id: this.nextEntityId++,
         x: p.x,
         y: p.y,
-        vx: Math.cos(hAngle) * (baseSpeed * 0.8),
-        vy: Math.sin(hAngle) * (baseSpeed * 0.8),
+        vx: Math.cos(hAngle) * (p.bulletSpeed * 0.8),
+        vy: Math.sin(hAngle) * (p.bulletSpeed * 0.8),
         radius: 4,
         damage: Math.round(p.bulletDamage * 0.7),
         isPlayer: true,
@@ -824,10 +1020,6 @@ export class GameEngine {
       });
       this.particles.emitMuzzleFlash(p.x, p.y, hAngle, '#f59e0b', false);
     }
-
-    // Recoil
-    p.vx -= forwardX * 18;
-    p.vy -= forwardY * 18;
   }
 
   private createPlayerBullet(x: number, y: number, dirX: number, dirY: number, speed: number) {
@@ -882,7 +1074,12 @@ export class GameEngine {
       b.y += b.vy * dt;
 
       // Projectile exhaust trail
-      if (b.homing) {
+      if (b.isRocket) {
+        this.particles.emitProjectileTrail(b.x, b.y, b.vx, b.vy, b.trailColor || '#fb923c', {
+          size: 5.2,
+          isHoming: true,
+        });
+      } else if (b.homing) {
         this.particles.emitProjectileTrail(b.x, b.y, b.vx, b.vy, b.color, { size: 3.2, isHoming: true });
       } else if (Math.random() < 0.4) {
         this.particles.emitProjectileTrail(b.x, b.y, b.vx, b.vy, b.color, { size: b.radius * 0.75 });
@@ -891,12 +1088,49 @@ export class GameEngine {
       // Check collision with enemies
       for (const enemy of this.enemies) {
         if (circleIntersectsCircle(b.x, b.y, b.radius, enemy.x, enemy.y, enemy.radius)) {
+          // Check directional front shield for shielded_cruiser
+          if (enemy.hasFrontShield && enemy.frontShieldHp && enemy.frontShieldHp > 0) {
+            const hitAngle = Math.atan2(b.y - enemy.y, b.x - enemy.x);
+            let angleDiff = Math.abs(hitAngle - enemy.angle);
+            while (angleDiff > Math.PI) angleDiff = Math.abs(angleDiff - Math.PI * 2);
+
+            // Frontal arc absorption
+            if (angleDiff < 1.15 && !b.isRocket) {
+              enemy.frontShieldHp -= b.damage;
+              enemy.hitFlashTimer = 0.08;
+              soundEngine.playHit();
+              this.particles.emitHitSparks(b.x, b.y, '#38bdf8', 6);
+              this.addFloatingText(enemy.x, enemy.y, 'KALKAN!', '#38bdf8');
+              if (enemy.frontShieldHp <= 0) {
+                enemy.hasFrontShield = false;
+                this.particles.emitShockwave(enemy.x, enemy.y, '#38bdf8', 8, 48, 0.35);
+                this.addFloatingText(enemy.x, enemy.y, 'KALKAN ÇÖKTÜ!', '#ef4444');
+              }
+              b.life = 0;
+              break;
+            }
+          }
+
           enemy.hp -= b.damage;
           enemy.hitFlashTimer = 0.08;
           this.stats.damageDealt += b.damage;
           soundEngine.playHit();
           this.particles.emitHitSparks(b.x, b.y, b.color, 5);
           this.addFloatingText(enemy.x, enemy.y, `-${b.damage}`, '#ffffff');
+
+          // Explosive Rocket AOE (Wing rockets & vortex missiles)
+          if (b.isRocket) {
+            soundEngine.playExplosion(false);
+            this.particles.emitEnemyExplosion(b.x, b.y, 'charger', '#f97316');
+            this.trauma = Math.min(1, this.trauma + 0.06);
+            for (const nearby of this.enemies) {
+              if (nearby.id !== enemy.id && distance(b.x, b.y, nearby.x, nearby.y) < 110) {
+                nearby.hp -= Math.round(b.damage * 0.85);
+                nearby.hitFlashTimer = 0.12;
+                this.particles.emitHitSparks(nearby.x, nearby.y, '#fb923c', 4);
+              }
+            }
+          }
 
           b.pierce -= 1;
           if (b.pierce <= 0) {
@@ -1095,6 +1329,150 @@ export class GameEngine {
               e.state = 'idle';
               e.telegraphProgress = 0;
               e.attackCooldown = 3.0;
+            }
+          }
+          break;
+        }
+
+        case 'stealth_stalker': {
+          e.angle = angleToPlayer;
+          e.attackCooldown -= dt;
+          if (e.stealthAlpha === undefined) e.stealthAlpha = 0.2;
+          if (e.isCloaked === undefined) e.isCloaked = true;
+
+          if (e.isCloaked) {
+            e.stealthAlpha = Math.max(0.18, e.stealthAlpha - dt * 1.5);
+            const flankAngle = angleToPlayer + 1.1;
+            e.vx = Math.cos(flankAngle) * e.speed;
+            e.vy = Math.sin(flankAngle) * e.speed;
+
+            if (distToPlayer < 240 && e.attackCooldown <= 0) {
+              e.isCloaked = false;
+              e.state = 'telegraphing';
+              e.stateTimer = 0.45;
+              soundEngine.playTelegraph();
+            }
+          } else {
+            e.stealthAlpha = Math.min(1.0, e.stealthAlpha + dt * 3.5);
+            if (e.state === 'telegraphing') {
+              e.stateTimer -= dt;
+              e.telegraphProgress = 1 - e.stateTimer / 0.45;
+              e.vx *= 0.85;
+              e.vy *= 0.85;
+
+              if (e.stateTimer <= 0) {
+                e.state = 'idle';
+                e.attackCooldown = 3.0;
+                e.isCloaked = true;
+
+                // Fire 3-way stealth plasma fan
+                for (let s = -1; s <= 1; s++) {
+                  const sAngle = angleToPlayer + s * 0.22;
+                  this.enemyBullets.push({
+                    id: this.nextEntityId++,
+                    x: e.x + Math.cos(sAngle) * 16,
+                    y: e.y + Math.sin(sAngle) * 16,
+                    vx: Math.cos(sAngle) * 360,
+                    vy: Math.sin(sAngle) * 360,
+                    radius: 4,
+                    damage: 18,
+                    isPlayer: false,
+                    color: '#c084fc',
+                    pierce: 1,
+                    homing: false,
+                    life: 2.2,
+                    maxLife: 2.2,
+                  });
+                }
+                soundEngine.playLaser(0.25);
+              }
+            }
+          }
+          break;
+        }
+
+        case 'shielded_cruiser': {
+          e.angle = angleToPlayer;
+          e.shieldAngle = angleToPlayer;
+          e.attackCooldown -= dt;
+
+          if (distToPlayer > 180) {
+            e.vx = Math.cos(angleToPlayer) * e.speed;
+            e.vy = Math.sin(angleToPlayer) * e.speed;
+          } else {
+            e.vx *= 0.9;
+            e.vy *= 0.9;
+          }
+
+          if (e.attackCooldown <= 0) {
+            e.attackCooldown = 1.6;
+            const perpX = -Math.sin(e.angle);
+            const perpY = Math.cos(e.angle);
+            const offsets = [10, -10];
+            for (const off of offsets) {
+              this.enemyBullets.push({
+                id: this.nextEntityId++,
+                x: e.x + perpX * off + Math.cos(e.angle) * 16,
+                y: e.y + perpY * off + Math.sin(e.angle) * 16,
+                vx: Math.cos(e.angle) * 380,
+                vy: Math.sin(e.angle) * 380,
+                radius: 4.5,
+                damage: 22,
+                isPlayer: false,
+                color: '#38bdf8',
+                pierce: 1,
+                homing: false,
+                life: 2.4,
+                maxLife: 2.4,
+              });
+            }
+            soundEngine.playLaser(0.3);
+          }
+          break;
+        }
+
+        case 'drone_carrier': {
+          e.angle = angleToPlayer;
+          if (e.carrierSpawnTimer === undefined) e.carrierSpawnTimer = 3.5;
+          e.carrierSpawnTimer -= dt;
+
+          if (distToPlayer < 360) {
+            e.vx = -Math.cos(angleToPlayer) * e.speed;
+            e.vy = -Math.sin(angleToPlayer) * e.speed;
+          } else if (distToPlayer > 540) {
+            e.vx = Math.cos(angleToPlayer) * e.speed;
+            e.vy = Math.sin(angleToPlayer) * e.speed;
+          } else {
+            e.vx *= 0.92;
+            e.vy *= 0.92;
+          }
+
+          if (e.carrierSpawnTimer <= 0) {
+            e.carrierSpawnTimer = 4.8;
+            this.addFloatingText(e.x, e.y - 30, 'DRON ÇIKIŞI!', '#fb923c');
+            for (let k = -1; k <= 1; k += 2) {
+              const droneAngle = e.angle + (k * Math.PI) / 2;
+              this.enemies.push({
+                id: this.nextEntityId++,
+                type: 'swarmer',
+                x: e.x + Math.cos(droneAngle) * 26,
+                y: e.y + Math.sin(droneAngle) * 26,
+                vx: Math.cos(droneAngle) * 180,
+                vy: Math.sin(droneAngle) * 180,
+                radius: 12,
+                hp: 25,
+                maxHp: 25,
+                speed: 210,
+                scoreValue: 80,
+                xpValue: 10,
+                color: '#f97316',
+                angle: droneAngle,
+                telegraphProgress: 0,
+                state: 'idle',
+                stateTimer: 0,
+                attackCooldown: 0,
+                hitFlashTimer: 0,
+              });
             }
           }
           break;
@@ -1649,7 +2027,54 @@ export class GameEngine {
       hitFlashTimer: 0,
     };
 
-    if (this.currentWave >= 2 && roll > 0.65) {
+    if (this.currentWave >= 4 && roll > 0.82) {
+      // Drone Carrier (Heavy capital ship deploying swarmers)
+      type = {
+        ...type,
+        type: 'drone_carrier',
+        radius: 30,
+        hp: Math.round((180 + this.currentWave * 25) * hpMult),
+        maxHp: Math.round((180 + this.currentWave * 25) * hpMult),
+        speed: Math.round(75 * speedMult),
+        scoreValue: 500,
+        xpValue: 50,
+        color: '#fb923c', // Warm Amber
+        carrierSpawnTimer: 3.5,
+        attackCooldown: 2.0,
+      };
+    } else if (this.currentWave >= 3 && roll < 0.28) {
+      // Shielded Cruiser (Frontal impenetrable plasma shield)
+      type = {
+        ...type,
+        type: 'shielded_cruiser',
+        radius: 25,
+        hp: Math.round((120 + this.currentWave * 18) * hpMult),
+        maxHp: Math.round((120 + this.currentWave * 18) * hpMult),
+        speed: Math.round(95 * speedMult),
+        scoreValue: 400,
+        xpValue: 40,
+        color: '#06b6d4', // Cyan Shielded
+        shieldAngle: 0,
+        shieldArc: (Math.PI * 2) / 3,
+        attackCooldown: 1.4,
+      };
+    } else if (this.currentWave >= 2 && roll >= 0.28 && roll < 0.52) {
+      // Stealth Stalker (Cloaks, flanks, fires spread bursts)
+      type = {
+        ...type,
+        type: 'stealth_stalker',
+        radius: 16,
+        hp: Math.round((50 + this.currentWave * 8) * hpMult),
+        maxHp: Math.round((50 + this.currentWave * 8) * hpMult),
+        speed: Math.round(175 * speedMult),
+        scoreValue: 260,
+        xpValue: 26,
+        color: '#c084fc', // Purple Cloak
+        isCloaked: true,
+        stealthAlpha: 0.15,
+        attackCooldown: 2.2,
+      };
+    } else if (this.currentWave >= 2 && roll > 0.65) {
       // Sniper
       type = {
         ...type,
@@ -1663,7 +2088,7 @@ export class GameEngine {
         color: '#a855f7', // Purple
         attackCooldown: 1.0,
       };
-    } else if (this.currentWave >= 3 && roll > 0.45) {
+    } else if (this.currentWave >= 3 && roll > 0.52) {
       // Charger
       type = {
         ...type,
@@ -1979,6 +2404,95 @@ export class GameEngine {
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 2;
         ctx.stroke();
+      } else if (e.type === 'stealth_stalker') {
+        // Stealth Stalker: Razor-sharp stealth phantom with cloaking field
+        const alpha = isHit ? 1.0 : Math.max(0.18, e.stealthAlpha ?? 1.0);
+        ctx.globalAlpha = alpha;
+        ctx.beginPath();
+        ctx.moveTo(18, 0);
+        ctx.lineTo(-10, -14);
+        ctx.lineTo(-4, -6);
+        ctx.lineTo(-14, 0);
+        ctx.lineTo(-4, 6);
+        ctx.lineTo(-10, 14);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#e9d5ff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Pulsing purple stealth sensor core
+        ctx.fillStyle = '#f0abfc';
+        ctx.beginPath();
+        ctx.arc(2, 0, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+      } else if (e.type === 'shielded_cruiser') {
+        // Shielded Cruiser: Heavy battlecruiser with reinforced prow & glowing front barrier
+        ctx.beginPath();
+        ctx.moveTo(22, 0);
+        ctx.lineTo(8, -20);
+        ctx.lineTo(-18, -16);
+        ctx.lineTo(-12, 0);
+        ctx.lineTo(-18, 16);
+        ctx.lineTo(8, 20);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#67e8f9';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Heavy twin cannon barrels
+        ctx.fillStyle = '#0891b2';
+        ctx.fillRect(4, -14, 12, 3);
+        ctx.fillRect(4, 11, 12, 3);
+
+        // Frontal Directional Energy Barrier Arc
+        const shieldR = e.radius + 10;
+        const arc = e.shieldArc || (Math.PI * 2) / 3;
+        ctx.save();
+        ctx.strokeStyle = 'rgba(6, 182, 212, 0.85)';
+        ctx.lineWidth = 4;
+        ctx.shadowColor = '#06b6d4';
+        ctx.shadowBlur = 12;
+        ctx.beginPath();
+        ctx.arc(0, 0, shieldR, -arc / 2, arc / 2);
+        ctx.stroke();
+        // Inner luminous shield trace
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.restore();
+      } else if (e.type === 'drone_carrier') {
+        // Drone Carrier: Large capital mothership with illuminated runway bays
+        ctx.beginPath();
+        ctx.moveTo(28, 0);
+        ctx.lineTo(16, -26);
+        ctx.lineTo(-24, -22);
+        ctx.lineTo(-30, 0);
+        ctx.lineTo(-24, 22);
+        ctx.lineTo(16, 26);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#fed7aa';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+
+        // Dual illuminated drone flight decks
+        ctx.fillStyle = '#ea580c';
+        ctx.fillRect(-12, -18, 20, 6);
+        ctx.fillRect(-12, 12, 20, 6);
+
+        // Runway guide lights
+        ctx.fillStyle = '#fef08a';
+        ctx.fillRect(4, -16, 3, 2);
+        ctx.fillRect(4, 14, 3, 2);
+
+        // Core command bridge
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(-2, 0, 7, 0, Math.PI * 2);
+        ctx.fill();
       } else if (e.type === 'aegis_sentinel') {
         // Aegis Sentinel: Heavy Bastion Shield Diamond with revolving barrier plates
         ctx.beginPath();
@@ -2095,12 +2609,58 @@ export class GameEngine {
     for (const b of this.playerBullets) {
       const sx = b.x - camX;
       const sy = b.y - camY;
-      ctx.fillStyle = b.color;
-      ctx.shadowColor = b.color;
-      ctx.shadowBlur = 8;
-      ctx.beginPath();
-      ctx.arc(sx, sy, b.radius, 0, Math.PI * 2);
-      ctx.fill();
+
+      if (b.isRocket) {
+        // Dedicated Rocket Missile rendering with warhead, body fins & booster trail
+        const bAngle = Math.atan2(b.vy, b.vx);
+        ctx.save();
+        ctx.translate(sx, sy);
+        ctx.rotate(bAngle);
+
+        // Rocket exhaust plume
+        ctx.fillStyle = '#fbbf24';
+        ctx.shadowColor = '#f97316';
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.moveTo(-b.radius * 1.6, 0);
+        ctx.lineTo(-b.radius * 2.6 - Math.random() * 4, -2.5);
+        ctx.lineTo(-b.radius * 2.6 - Math.random() * 4, 2.5);
+        ctx.closePath();
+        ctx.fill();
+
+        // Rocket fuselage body
+        ctx.fillStyle = '#e2e8f0';
+        ctx.fillRect(-b.radius * 1.4, -2.2, b.radius * 2.2, 4.4);
+
+        // Glowing warhead
+        ctx.fillStyle = b.color;
+        ctx.beginPath();
+        ctx.moveTo(b.radius * 0.8, -2.2);
+        ctx.lineTo(b.radius * 1.6, 0);
+        ctx.lineTo(b.radius * 0.8, 2.2);
+        ctx.closePath();
+        ctx.fill();
+
+        // Stabilizer fins
+        ctx.fillStyle = '#f97316';
+        ctx.beginPath();
+        ctx.moveTo(-b.radius * 1.4, -4);
+        ctx.lineTo(-b.radius * 0.8, -2.2);
+        ctx.lineTo(-b.radius * 1.4, 0);
+        ctx.lineTo(-b.radius * 0.8, 2.2);
+        ctx.lineTo(-b.radius * 1.4, 4);
+        ctx.stroke();
+
+        ctx.restore();
+      } else {
+        // Standard energy projectile
+        ctx.fillStyle = b.color;
+        ctx.shadowColor = b.color;
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(sx, sy, b.radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
 
     for (const b of this.enemyBullets) {
@@ -2129,32 +2689,136 @@ export class GameEngine {
     const isHit = p.hitFlashTimer > 0;
     const shipColor = isHit ? '#ffffff' : this.currentShipClass.color;
 
-    // Draw Ship Hull
+    // 1. Dual Engine Thruster Exhaust Plumes (animated flame flicker)
+    const isThrusting = Math.abs(p.vx) > 20 || Math.abs(p.vy) > 20 || p.isDashing;
+    const flameLength = p.isDashing ? 28 : isThrusting ? 14 + Math.sin(Date.now() * 0.05) * 5 : 6;
+    const thrusterOffsets = [-6, 6];
+
+    for (const ty of thrusterOffsets) {
+      const grad = ctx.createLinearGradient(-14, ty, -14 - flameLength, ty);
+      grad.addColorStop(0, '#ffffff');
+      grad.addColorStop(0.3, p.isDashing ? '#f97316' : '#38bdf8');
+      grad.addColorStop(1, 'rgba(6, 182, 212, 0)');
+
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(-14, ty - 2.5);
+      ctx.lineTo(-14 - flameLength, ty);
+      ctx.lineTo(-14, ty + 2.5);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // 2. Aerodynamic Swept Wings (User brief: "gemimizde kanat ve o kanatlarda roketler olsun")
+    // Left Swept Wing
     ctx.fillStyle = shipColor;
     ctx.shadowColor = shipColor;
     ctx.shadowBlur = p.isDashing ? 18 : 8;
 
     ctx.beginPath();
-    ctx.moveTo(18, 0); // Tip
-    ctx.lineTo(-14, -12); // Left wing
-    ctx.lineTo(-8, 0); // Back indent
-    ctx.lineTo(-14, 12); // Right wing
+    ctx.moveTo(8, -5); // Wing root leading edge
+    ctx.lineTo(-8, -23); // Wingtip forward
+    ctx.lineTo(-18, -20); // Wingtip trailing edge
+    ctx.lineTo(-10, -7); // Wing root trailing edge
     ctx.closePath();
     ctx.fill();
 
-    // Cockpit
-    ctx.fillStyle = '#ffffff';
+    // Right Swept Wing
     ctx.beginPath();
-    ctx.ellipse(2, 0, 6, 3, 0, 0, Math.PI * 2);
+    ctx.moveTo(8, 5); // Wing root leading edge
+    ctx.lineTo(-8, 23); // Wingtip forward
+    ctx.lineTo(-18, 20); // Wingtip trailing edge
+    ctx.lineTo(-10, 7); // Wing root trailing edge
+    ctx.closePath();
     ctx.fill();
 
-    // Shield Aura
+    // Wing panel metallic edge highlights
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(8, -5);
+    ctx.lineTo(-8, -23);
+    ctx.moveTo(8, 5);
+    ctx.lineTo(-8, 23);
+    ctx.stroke();
+
+    // 3. Wingtip Rocket Pods & Active Rockets
+    const rocketReady = p.wingRocketReady || p.wingRocketCooldown <= 0;
+    const warheadColor = rocketReady ? '#f97316' : '#64748b';
+    const warheadGlow = rocketReady ? 12 : 2;
+
+    const wingPylons = [-22, 22];
+    for (const py of wingPylons) {
+      // Rocket launcher pod bracket
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(-12, py - 2.5, 14, 5);
+      ctx.strokeStyle = '#475569';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(-12, py - 2.5, 14, 5);
+
+      // Rocket Missile Body inside pod
+      ctx.fillStyle = '#e2e8f0';
+      ctx.fillRect(-10, py - 1.8, 12, 3.6);
+
+      // Rocket Warhead (Glowing orange when armed and ready!)
+      ctx.save();
+      ctx.fillStyle = warheadColor;
+      ctx.shadowColor = warheadColor;
+      ctx.shadowBlur = warheadGlow;
+      ctx.beginPath();
+      ctx.moveTo(2, py - 1.8);
+      ctx.lineTo(7, py);
+      ctx.lineTo(2, py + 1.8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+
+      // Rear exhaust nozzle
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(-14, py - 2, 2.5, 4);
+    }
+
+    // 4. Main Fuselage Hull
+    ctx.fillStyle = shipColor;
+    ctx.beginPath();
+    ctx.moveTo(22, 0); // Nose tip
+    ctx.lineTo(4, -9); // Mid forward left
+    ctx.lineTo(-15, -9); // Port rear
+    ctx.lineTo(-10, 0); // Center thruster notch
+    ctx.lineTo(-15, 9); // Starboard rear
+    ctx.lineTo(4, 9); // Mid forward right
+    ctx.closePath();
+    ctx.fill();
+
+    // Fuselage armor plating accents
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(14, 0);
+    ctx.lineTo(-6, -6);
+    ctx.moveTo(14, 0);
+    ctx.lineTo(-6, 6);
+    ctx.stroke();
+
+    // 5. Cockpit Canopy with glowing cyan reflection
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = '#38bdf8';
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.ellipse(3, 0, 7, 3.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // 6. Shield Energy Aura
     if (p.shield > 0) {
       ctx.strokeStyle = `rgba(6, 182, 212, ${0.25 + (p.shield / p.maxShield) * 0.45})`;
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2.2;
+      ctx.shadowColor = '#06b6d4';
+      ctx.shadowBlur = 10;
       ctx.beginPath();
-      ctx.arc(0, 0, 24, 0, Math.PI * 2);
+      ctx.arc(0, 0, 27, 0, Math.PI * 2);
       ctx.stroke();
+      ctx.shadowBlur = 0;
     }
 
     ctx.restore();

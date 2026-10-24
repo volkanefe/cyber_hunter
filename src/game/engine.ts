@@ -5,6 +5,7 @@ import {
   clamp,
   distance,
   getXpRequiredForLevel,
+  calculateCombatIntensity,
 } from './rules';
 import {
   Bullet,
@@ -34,6 +35,14 @@ import {
   updateMissionProgress,
 } from './missions';
 import {
+  CAMPAIGN_SECTORS,
+  SectorDef,
+  SectorProgress,
+  getSectorById,
+  loadSavedSectorProgress,
+  recordSectorVictory,
+} from './sectors';
+import {
   createDefaultGalaxies,
   createDefaultPlanets,
   drawGalaxy,
@@ -41,6 +50,14 @@ import {
   isPlayerInPlanetOrbit,
   updatePlanetScan,
 } from './celestial';
+
+export interface SectorVictoryData {
+  sector: SectorDef;
+  stars: number;
+  score: number;
+  time: number;
+  nextSectorUnlocked: number | null;
+}
 
 export interface EngineCallbacks {
   onStateChange: (state: GameStatus) => void;
@@ -50,6 +67,8 @@ export interface EngineCallbacks {
   onWaveStart: (wave: number) => void;
   onMissionsUpdate?: (missions: DailyMission[], buffs: ActiveMissionBuffs) => void;
   onMissionCompletedAlert?: (mission: DailyMission) => void;
+  onSectorVictory?: (data: SectorVictoryData) => void;
+  onIntensityChange?: (intensity: number, bpm: number) => void;
 }
 
 export class GameEngine {
@@ -71,10 +90,15 @@ export class GameEngine {
 
   // Wave & Spawning
   public currentWave: number = 1;
-  private maxWaves: number = 5;
+  private maxWaves: number = 3;
   private waveSpawnRemaining: number = 0;
   private spawnCooldown: number = 0;
   private bossSpawned: boolean = false;
+
+  // Campaign Sector & Combat Intensity
+  public currentSector: SectorDef = CAMPAIGN_SECTORS[0];
+  public sectorProgress: SectorProgress[] = loadSavedSectorProgress();
+  private smoothedIntensity: number = 0;
 
   // Run Statistics
   public stats: RunStats = {
@@ -259,10 +283,23 @@ export class GameEngine {
     };
   }
 
-  public startRun(classId?: ShipClassId) {
+  public selectSector(sectorId: number) {
+    this.currentSector = getSectorById(sectorId);
+    this.maxWaves = this.currentSector.targetWaves;
+    soundEngine.selectTrack(this.currentSector.recommendedTrackId);
+  }
+
+  public startRun(classId?: ShipClassId, sectorId?: number) {
     if (classId) {
       this.setShipClass(classId);
     }
+    if (sectorId !== undefined) {
+      this.selectSector(sectorId);
+    } else {
+      this.maxWaves = this.currentSector.targetWaves;
+      soundEngine.selectTrack(this.currentSector.recommendedTrackId);
+    }
+
     this.player = this.createDefaultPlayer(this.currentShipClass);
     this.enemies = [];
     this.playerBullets = [];
@@ -279,8 +316,8 @@ export class GameEngine {
 
     this.currentWave = 1;
     this.bossSpawned = false;
-    this.waveSpawnRemaining = 14;
-    this.spawnCooldown = 2.5;
+    this.waveSpawnRemaining = Math.round(12 * this.currentSector.spawnRateMultiplier);
+    this.spawnCooldown = 2.0;
 
     this.stats = {
       score: 0,
@@ -541,6 +578,31 @@ export class GameEngine {
 
     // Celestial bodies (Galaxies & Planets)
     this.updateCelestial(dt);
+
+    // Calculate dynamic combat intensity for adaptive music tempo & resonance
+    const isBossAlive =
+      this.bossSpawned &&
+      this.enemies.some(
+        (e) =>
+          e.type === 'titan_boss' ||
+          e.type === 'aegis_sentinel' ||
+          e.type === 'hive_queen' ||
+          e.type === 'omega_primus'
+      );
+    const hpRatio = this.player.hp / Math.max(1, this.player.maxHp);
+    const rawIntensity = calculateCombatIntensity(
+      this.enemies.length,
+      isBossAlive,
+      hpRatio,
+      this.stats.combo
+    );
+
+    // Smooth intensity transitions
+    this.smoothedIntensity = this.smoothedIntensity * 0.94 + rawIntensity * 0.06;
+    soundEngine.setCombatIntensity(this.smoothedIntensity);
+    if (this.callbacks.onIntensityChange) {
+      this.callbacks.onIntensityChange(this.smoothedIntensity, soundEngine.getCurrentBpm());
+    }
 
     // Periodically sync UI
     this.callbacks.onPlayerUpdate({ ...this.player });
@@ -1038,13 +1100,14 @@ export class GameEngine {
           break;
         }
 
-        case 'titan_boss': {
-          // Titan Void Warden: Boss fight
+        case 'titan_boss':
+        case 'aegis_sentinel':
+        case 'hive_queen':
+        case 'omega_primus': {
           e.angle = angleToPlayer;
           e.attackCooldown -= dt;
 
-          // Float towards arena center or player
-          const targetDist = 260;
+          const targetDist = e.type === 'omega_primus' ? 320 : 250;
           if (distToPlayer > targetDist) {
             e.vx = Math.cos(angleToPlayer) * e.speed;
             e.vy = Math.sin(angleToPlayer) * e.speed;
@@ -1054,7 +1117,7 @@ export class GameEngine {
           }
 
           if (e.attackCooldown <= 0) {
-            e.attackCooldown = 2.2;
+            e.attackCooldown = e.type === 'omega_primus' ? 1.6 : e.type === 'aegis_sentinel' ? 1.8 : 2.1;
             this.fireBossAttackPattern(e);
           }
           break;
@@ -1073,7 +1136,14 @@ export class GameEngine {
         !this.player.isDashing &&
         circleIntersectsCircle(e.x, e.y, e.radius, this.player.x, this.player.y, 16)
       ) {
-        const contactDamage = e.type === 'titan_boss' ? 35 : e.type === 'charger' ? 30 : 15;
+        const contactDamage =
+          e.type === 'omega_primus'
+            ? 45
+            : e.type === 'titan_boss' || e.type === 'aegis_sentinel' || e.type === 'hive_queen'
+            ? 35
+            : e.type === 'charger'
+            ? 30
+            : 15;
         this.damagePlayer(contactDamage);
         // Push enemy back slightly
         e.vx = -Math.cos(angleToPlayer) * 120;
@@ -1085,10 +1155,112 @@ export class GameEngine {
   private fireBossAttackPattern(boss: Enemy) {
     const isEnraged = boss.hp < boss.maxHp * 0.5;
     soundEngine.playLaser(-0.2);
+    const baseAngle = Math.atan2(this.player.y - boss.y, this.player.x - boss.x);
 
+    if (boss.type === 'omega_primus') {
+      // Omega Titan Primus: 16-bullet radial storm + 2 high-speed sniper bolts
+      const count = isEnraged ? 18 : 14;
+      for (let i = 0; i < count; i++) {
+        const angle = (i / count) * Math.PI * 2 + (isEnraged ? boss.angle : 0);
+        const bx = boss.x + Math.cos(angle) * (boss.radius * 0.8);
+        const by = boss.y + Math.sin(angle) * (boss.radius * 0.8);
+        this.particles.emitMuzzleFlash(bx, by, angle, '#ef4444', true);
+        this.enemyBullets.push({
+          id: this.nextEntityId++,
+          x: bx,
+          y: by,
+          vx: Math.cos(angle) * 310,
+          vy: Math.sin(angle) * 310,
+          radius: 7,
+          damage: 24,
+          isPlayer: false,
+          color: '#ef4444',
+          pierce: 1,
+          homing: false,
+          life: 4.0,
+          maxLife: 4.0,
+        });
+      }
+      // Direct sniper bolt towards player
+      this.enemyBullets.push({
+        id: this.nextEntityId++,
+        x: boss.x + Math.cos(baseAngle) * boss.radius,
+        y: boss.y + Math.sin(baseAngle) * boss.radius,
+        vx: Math.cos(baseAngle) * 540,
+        vy: Math.sin(baseAngle) * 540,
+        radius: 6,
+        damage: 28,
+        isPlayer: false,
+        color: '#facc15',
+        pierce: 1,
+        homing: false,
+        life: 2.2,
+        maxLife: 2.2,
+      });
+      if (isEnraged) this.addFloatingText(boss.x, boss.y - 40, 'HİÇLİK GAZI!', '#ef4444');
+      return;
+    }
+
+    if (boss.type === 'aegis_sentinel') {
+      // Aegis Sentinel: 7-bullet wide spread volley
+      const spread = 0.16;
+      for (let i = -3; i <= 3; i++) {
+        const angle = baseAngle + i * spread;
+        const bx = boss.x + Math.cos(angle) * (boss.radius * 0.7);
+        const by = boss.y + Math.sin(angle) * (boss.radius * 0.7);
+        this.particles.emitMuzzleFlash(bx, by, angle, '#6366f1', false);
+        this.enemyBullets.push({
+          id: this.nextEntityId++,
+          x: bx,
+          y: by,
+          vx: Math.cos(angle) * 340,
+          vy: Math.sin(angle) * 340,
+          radius: 5.5,
+          damage: 20,
+          isPlayer: false,
+          color: '#6366f1',
+          pierce: 1,
+          homing: false,
+          life: 3.2,
+          maxLife: 3.2,
+        });
+      }
+      return;
+    }
+
+    if (boss.type === 'hive_queen') {
+      // Hive Queen: Cluster venom barrage + minion swarm reinforcement
+      for (let i = -2; i <= 2; i++) {
+        const angle = baseAngle + (Math.random() - 0.5) * 0.6;
+        const bx = boss.x + Math.cos(angle) * (boss.radius * 0.7);
+        const by = boss.y + Math.sin(angle) * (boss.radius * 0.7);
+        this.particles.emitMuzzleFlash(bx, by, angle, '#ec4899', false);
+        this.enemyBullets.push({
+          id: this.nextEntityId++,
+          x: bx,
+          y: by,
+          vx: Math.cos(angle) * (260 + Math.random() * 80),
+          vy: Math.sin(angle) * (260 + Math.random() * 80),
+          radius: 6.5,
+          damage: 19,
+          isPlayer: false,
+          color: '#ec4899',
+          pierce: 1,
+          homing: false,
+          life: 3.5,
+          maxLife: 3.5,
+        });
+      }
+      // Spawn extra swarmers if room
+      if (this.enemies.length < 8) {
+        this.spawnRandomEnemy();
+      }
+      return;
+    }
+
+    // Default Titan Boss
     if (!isEnraged) {
       // 5-bullet arc towards player
-      const baseAngle = Math.atan2(this.player.y - boss.y, this.player.x - boss.x);
       const spread = 0.2;
       for (let i = -2; i <= 2; i++) {
         const angle = baseAngle + i * spread;
@@ -1198,13 +1370,45 @@ export class GameEngine {
       });
     }
 
-    if (e.type === 'titan_boss') {
+    const isBoss =
+      e.type === 'titan_boss' ||
+      e.type === 'aegis_sentinel' ||
+      e.type === 'hive_queen' ||
+      e.type === 'omega_primus';
+
+    if (isBoss) {
       this.dispatchMissionEvent({ type: 'boss_defeated' });
-      // Victory!
+      // Massive boss explosion effect
+      this.particles.emitEnemyExplosion(e.x, e.y, 'titan_boss', e.color);
       setTimeout(() => {
-        soundEngine.playVictory();
-        this.setStatus('victory');
+        this.handleSectorVictory();
       }, 700);
+    }
+  }
+
+  public handleSectorVictory() {
+    const hpPct = this.player.hp / Math.max(1, this.player.maxHp);
+    const { updatedList, starsEarned, nextSectorUnlocked } = recordSectorVictory(
+      this.currentSector.id,
+      this.stats.score,
+      this.stats.timeElapsed,
+      hpPct,
+      this.sectorProgress
+    );
+    this.sectorProgress = updatedList;
+
+    soundEngine.playVictory();
+    soundEngine.setMusicMood('victory');
+    this.setStatus('victory');
+
+    if (this.callbacks.onSectorVictory) {
+      this.callbacks.onSectorVictory({
+        sector: this.currentSector,
+        stars: starsEarned,
+        score: this.stats.score,
+        time: this.stats.timeElapsed,
+        nextSectorUnlocked,
+      });
     }
   }
 
@@ -1324,51 +1528,92 @@ export class GameEngine {
   private updateWaveSpawning(dt: number) {
     this.spawnCooldown -= dt;
 
-    if (this.currentWave === 5 && !this.bossSpawned) {
+    const isFinalWave = this.currentWave === this.maxWaves;
+    const hasBoss = this.currentSector.bossArchetype && this.currentSector.bossArchetype !== 'none';
+
+    if (isFinalWave && hasBoss && !this.bossSpawned) {
       this.bossSpawned = true;
       soundEngine.playBossAlarm();
       soundEngine.setMusicMood('boss');
-      this.addFloatingText(this.player.x, this.player.y - 60, 'UYARI: TİTAN VOİD MUHAFIZI!', '#ef4444');
-      // Spawn Titan Boss
-      this.enemies.push({
-        id: this.nextEntityId++,
-        type: 'titan_boss',
-        x: this.player.x + 350,
-        y: this.player.y - 200,
-        vx: 0,
-        vy: 0,
-        radius: 42,
-        hp: 750,
-        maxHp: 750,
-        speed: 95,
-        scoreValue: 5000,
-        xpValue: 200,
-        color: '#f43f5e',
-        angle: 0,
-        telegraphProgress: 0,
-        state: 'idle',
-        stateTimer: 0,
-        attackCooldown: 1.5,
-        hitFlashTimer: 0,
-      });
+      this.spawnSectorBoss();
       return;
     }
 
     if (this.waveSpawnRemaining > 0 && this.spawnCooldown <= 0) {
-      this.spawnCooldown = Math.max(0.6, 2.0 - this.currentWave * 0.25);
+      this.spawnCooldown = Math.max(0.5, (2.0 - this.currentWave * 0.2) / this.currentSector.spawnRateMultiplier);
       this.waveSpawnRemaining -= 1;
       this.spawnRandomEnemy();
     }
 
     // Check if wave is completed
-    if (this.waveSpawnRemaining <= 0 && this.enemies.length === 0 && this.currentWave < this.maxWaves) {
-      this.currentWave += 1;
-      this.stats.waveReached = this.currentWave;
-      this.waveSpawnRemaining = 12 + this.currentWave * 5;
-      soundEngine.playLevelUp();
-      this.callbacks.onWaveStart(this.currentWave);
-      this.addFloatingText(this.player.x, this.player.y - 50, `DALGA ${this.currentWave}`, '#38bdf8');
+    if (this.waveSpawnRemaining <= 0 && this.enemies.length === 0) {
+      if (this.currentWave < this.maxWaves) {
+        this.currentWave += 1;
+        this.stats.waveReached = this.currentWave;
+        this.waveSpawnRemaining = Math.round((10 + this.currentWave * 4) * this.currentSector.spawnRateMultiplier);
+        soundEngine.playLevelUp();
+        this.callbacks.onWaveStart(this.currentWave);
+        this.addFloatingText(this.player.x, this.player.y - 50, `DALGA ${this.currentWave} / ${this.maxWaves}`, '#38bdf8');
+      } else if (!hasBoss) {
+        // Sector completed (non-boss sector)
+        this.handleSectorVictory();
+      }
     }
+  }
+
+  private spawnSectorBoss() {
+    const s = this.currentSector;
+    const hpMult = s.enemyHpMultiplier;
+    let bossType: EnemyType = 'titan_boss';
+    let bossHp = 750;
+    let bossRadius = 42;
+    let bossColor = '#f43f5e';
+    let alertText = 'UYARI: TİTAN VOİD MUHAFIZI!';
+
+    if (s.bossArchetype === 'aegis_sentinel') {
+      bossType = 'aegis_sentinel';
+      bossHp = 650;
+      bossRadius = 40;
+      bossColor = '#6366f1';
+      alertText = 'UYARI: AEGIS MUHAFIZ DRETNOTU!';
+    } else if (s.bossArchetype === 'hive_queen') {
+      bossType = 'hive_queen';
+      bossHp = 850;
+      bossRadius = 44;
+      bossColor = '#ec4899';
+      alertText = 'UYARI: BİYOLOJİK KOVAN KRALİÇESİ!';
+    } else if (s.bossArchetype === 'omega_primus') {
+      bossType = 'omega_primus';
+      bossHp = 1400;
+      bossRadius = 50;
+      bossColor = '#ef4444';
+      alertText = 'KRİTİK TEHDİT: OMEGA TİTAN PRİMUS!';
+    }
+
+    bossHp = Math.round(bossHp * hpMult);
+    this.addFloatingText(this.player.x, this.player.y - 60, alertText, bossColor);
+
+    this.enemies.push({
+      id: this.nextEntityId++,
+      type: bossType,
+      x: this.player.x + 350,
+      y: this.player.y - 200,
+      vx: 0,
+      vy: 0,
+      radius: bossRadius,
+      hp: bossHp,
+      maxHp: bossHp,
+      speed: Math.round(95 * s.enemySpeedMultiplier),
+      scoreValue: 6000,
+      xpValue: 240,
+      color: bossColor,
+      angle: 0,
+      telegraphProgress: 0,
+      state: 'idle',
+      stateTimer: 0,
+      attackCooldown: 1.5,
+      hitFlashTimer: 0,
+    });
   }
 
   private spawnRandomEnemy() {
@@ -1378,7 +1623,10 @@ export class GameEngine {
     const spawnX = clamp(this.player.x + Math.cos(angle) * distance, 100, WORLD_BOUNDS.width - 100);
     const spawnY = clamp(this.player.y + Math.sin(angle) * distance, 100, WORLD_BOUNDS.height - 100);
 
+    const hpMult = this.currentSector.enemyHpMultiplier;
+    const speedMult = this.currentSector.enemySpeedMultiplier;
     const roll = Math.random();
+
     let type: Enemy = {
       id: this.nextEntityId++,
       type: 'swarmer',
@@ -1387,9 +1635,9 @@ export class GameEngine {
       vx: 0,
       vy: 0,
       radius: 14,
-      hp: 35 + this.currentWave * 6,
-      maxHp: 35 + this.currentWave * 6,
-      speed: 160 + this.currentWave * 8,
+      hp: Math.round((35 + this.currentWave * 6) * hpMult),
+      maxHp: Math.round((35 + this.currentWave * 6) * hpMult),
+      speed: Math.round((160 + this.currentWave * 8) * speedMult),
       scoreValue: 120,
       xpValue: 14,
       color: '#f97316', // Orange
@@ -1407,9 +1655,9 @@ export class GameEngine {
         ...type,
         type: 'sniper',
         radius: 17,
-        hp: 45 + this.currentWave * 7,
-        maxHp: 45 + this.currentWave * 7,
-        speed: 130,
+        hp: Math.round((45 + this.currentWave * 7) * hpMult),
+        maxHp: Math.round((45 + this.currentWave * 7) * hpMult),
+        speed: Math.round(130 * speedMult),
         scoreValue: 220,
         xpValue: 22,
         color: '#a855f7', // Purple
@@ -1421,9 +1669,9 @@ export class GameEngine {
         ...type,
         type: 'charger',
         radius: 22,
-        hp: 95 + this.currentWave * 15,
-        maxHp: 95 + this.currentWave * 15,
-        speed: 110,
+        hp: Math.round((95 + this.currentWave * 15) * hpMult),
+        maxHp: Math.round((95 + this.currentWave * 15) * hpMult),
+        speed: Math.round(110 * speedMult),
         scoreValue: 350,
         xpValue: 35,
         color: '#ef4444', // Red
@@ -1610,9 +1858,9 @@ export class GameEngine {
     ctx.setLineDash([12, 8]);
     ctx.strokeRect(-camX, -camY, WORLD_BOUNDS.width, WORLD_BOUNDS.height);
 
-    // Grid lines for spatial sense
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
-    ctx.lineWidth = 1;
+    // Grid lines for spatial sense with sector ambient theme
+    ctx.strokeStyle = this.currentSector.gridColor || 'rgba(255, 255, 255, 0.04)';
+    ctx.lineWidth = 1.2;
     ctx.setLineDash([]);
     const gridSize = 160;
     const startX = Math.floor(camX / gridSize) * gridSize - camX;
@@ -1731,6 +1979,71 @@ export class GameEngine {
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 2;
         ctx.stroke();
+      } else if (e.type === 'aegis_sentinel') {
+        // Aegis Sentinel: Heavy Bastion Shield Diamond with revolving barrier plates
+        ctx.beginPath();
+        ctx.moveTo(38, 0);
+        ctx.lineTo(0, -28);
+        ctx.lineTo(-32, 0);
+        ctx.lineTo(0, 28);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#818cf8';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        // Glowing aegis core
+        ctx.fillStyle = '#c7d2fe';
+        ctx.beginPath();
+        ctx.arc(0, 0, 10, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (e.type === 'hive_queen') {
+        // Hive Queen: Multi-segment organic carapace
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 36, 24, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Mandibles
+        ctx.fillStyle = '#f43f5e';
+        ctx.beginPath();
+        ctx.moveTo(32, -10);
+        ctx.lineTo(48, -4);
+        ctx.lineTo(32, 0);
+        ctx.moveTo(32, 0);
+        ctx.lineTo(48, 4);
+        ctx.lineTo(32, 10);
+        ctx.fill();
+
+        // Venom glow core
+        ctx.fillStyle = '#f472b6';
+        ctx.beginPath();
+        ctx.arc(-8, 0, 11, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (e.type === 'omega_primus') {
+        // Omega Titan Primus: 16-point colossal warship dreadnought
+        ctx.beginPath();
+        for (let i = 0; i < 16; i++) {
+          const a = (i / 16) * Math.PI * 2;
+          const r = i % 2 === 0 ? 50 : 36;
+          const px = Math.cos(a) * r;
+          const py = Math.sin(a) * r;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#fca5a5';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        // Pulsing dark matter singularity center
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = '#ef4444';
+        ctx.shadowBlur = 18;
+        ctx.beginPath();
+        ctx.arc(0, 0, 15, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
       } else if (e.type === 'titan_boss') {
         // Titan Boss: Concentric spiked armored core
         ctx.beginPath();
@@ -1756,16 +2069,21 @@ export class GameEngine {
 
       // Enemy Health Bar (if damaged)
       if (e.hp < e.maxHp) {
-        const barWidth = e.radius * 2.2;
-        const barHeight = 4;
+        const isBoss =
+          e.type === 'titan_boss' ||
+          e.type === 'aegis_sentinel' ||
+          e.type === 'hive_queen' ||
+          e.type === 'omega_primus';
+        const barWidth = isBoss ? e.radius * 2.8 : e.radius * 2.2;
+        const barHeight = isBoss ? 6 : 4;
         const barX = sx - barWidth / 2;
-        const barY = sy - e.radius - 12;
+        const barY = sy - e.radius - (isBoss ? 16 : 12);
 
-        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillStyle = 'rgba(0,0,0,0.7)';
         ctx.fillRect(barX, barY, barWidth, barHeight);
 
         const healthPct = clamp(e.hp / e.maxHp, 0, 1);
-        ctx.fillStyle = e.type === 'titan_boss' ? '#f43f5e' : '#eab308';
+        ctx.fillStyle = isBoss ? e.color : '#eab308';
         ctx.fillRect(barX, barY, barWidth * healthPct, barHeight);
       }
     }

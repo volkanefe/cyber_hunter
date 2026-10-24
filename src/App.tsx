@@ -11,11 +11,13 @@ import {
 } from './game/types';
 import { SHIP_CLASSES } from './game/constants';
 import { soundEngine } from './game/audio';
+import { CAMPAIGN_SECTORS, SectorProgress, loadSavedSectorProgress } from './game/sectors';
 import { TitleScreen } from './components/TitleScreen';
 import { HUD } from './components/HUD';
 import { PerkModal } from './components/PerkModal';
 import { StatusModals } from './components/StatusModals';
 import { DailyMissionModal } from './components/DailyMissionModal';
+import { SectorSelectModal } from './components/SectorSelectModal';
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -27,6 +29,21 @@ export default function App() {
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [isMusicMuted, setIsMusicMuted] = useState<boolean>(() => soundEngine.isMusicMuted());
   const [currentWave, setCurrentWave] = useState<number>(1);
+
+  // Campaign Sectors Progression (10 Levels)
+  const [currentSectorId, setCurrentSectorId] = useState<number>(1);
+  const [sectorProgress, setSectorProgress] = useState<SectorProgress[]>(() =>
+    loadSavedSectorProgress()
+  );
+  const [isSectorMapOpen, setIsSectorMapOpen] = useState<boolean>(false);
+  const [starsEarned, setStarsEarned] = useState<number>(1);
+
+  // Dynamic Audio & Adaptive Music State
+  const [combatIntensity, setCombatIntensity] = useState<number>(0);
+  const [currentBpm, setCurrentBpm] = useState<number>(() => soundEngine.getCurrentBpm());
+  const [currentTrackName, setCurrentTrackName] = useState<string>(
+    () => soundEngine.getCurrentTrack().nameTr
+  );
 
   // Daily Missions state
   const [dailyMissions, setDailyMissions] = useState<DailyMission[]>([]);
@@ -115,6 +132,15 @@ export default function App() {
         setMissionAlert(mission);
         setTimeout(() => setMissionAlert(null), 4000);
       },
+      onSectorVictory: (data) => {
+        setStarsEarned(data.stars);
+        setSectorProgress([...(engineRef.current?.sectorProgress || loadSavedSectorProgress())]);
+      },
+      onIntensityChange: (intensity, bpm) => {
+        setCombatIntensity(intensity);
+        setCurrentBpm(bpm);
+        setCurrentTrackName(soundEngine.getCurrentTrack().nameTr);
+      },
     });
     engineRef.current = engine;
     engine.startLoop();
@@ -146,15 +172,23 @@ export default function App() {
     };
   }, []);
 
-  // Global key shortcuts for daily missions, music and sound
+  // Global key shortcuts for daily missions, music, sound and campaign map
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.key === 'g' || e.key === 'G') && gameStatus !== 'title') {
         setIsMissionsOpen((prev) => !prev);
       }
+      if (e.key === 'c' || e.key === 'C') {
+        setIsSectorMapOpen((prev) => !prev);
+      }
       if (e.key === 'b' || e.key === 'B') {
         const nextMuted = soundEngine.toggleMusicMute();
         setIsMusicMuted(nextMuted);
+      }
+      if (e.key === 'n' || e.key === 'N') {
+        const track = soundEngine.nextTrack();
+        setCurrentTrackName(track.nameTr);
+        setCurrentBpm(soundEngine.getCurrentBpm());
       }
       if (e.key === 'm' || e.key === 'M') {
         const nextMuted = soundEngine.toggleMute();
@@ -167,8 +201,31 @@ export default function App() {
 
   const handleStartGame = () => {
     if (engineRef.current) {
-      engineRef.current.startRun(selectedClass);
+      engineRef.current.startRun(selectedClass, currentSectorId);
     }
+  };
+
+  const handleSelectSector = (sectorId: number) => {
+    setCurrentSectorId(sectorId);
+    if (engineRef.current) {
+      engineRef.current.selectSector(sectorId);
+      if (gameStatus !== 'title') {
+        engineRef.current.startRun(selectedClass, sectorId);
+      }
+    }
+  };
+
+  const handleNextSector = (nextSectorId: number) => {
+    setCurrentSectorId(nextSectorId);
+    if (engineRef.current) {
+      engineRef.current.startRun(selectedClass, nextSectorId);
+    }
+  };
+
+  const handleCycleMusicTrack = () => {
+    const track = soundEngine.nextTrack();
+    setCurrentTrackName(track.nameTr);
+    setCurrentBpm(soundEngine.getCurrentBpm());
   };
 
   const handleSelectClass = (classId: ShipClassId) => {
@@ -210,7 +267,7 @@ export default function App() {
 
   const handleRestart = () => {
     if (engineRef.current) {
-      engineRef.current.startRun(selectedClass);
+      engineRef.current.startRun(selectedClass, currentSectorId);
     }
   };
 
@@ -225,6 +282,9 @@ export default function App() {
       engineRef.current.claimMission(missionId);
     }
   };
+
+  const totalCampaignStars = sectorProgress.reduce((sum, p) => sum + (p.stars || 0), 0);
+  const currentSectorDef = engineRef.current?.currentSector || CAMPAIGN_SECTORS[0];
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-slate-950 font-sans">
@@ -247,6 +307,12 @@ export default function App() {
           onOpenMissions={() => setIsMissionsOpen(true)}
           isMusicMuted={isMusicMuted}
           onToggleMusic={handleToggleMusic}
+          currentSectorId={currentSectorId}
+          onOpenSectorMap={() => setIsSectorMapOpen(true)}
+          onCycleMusicTrack={handleCycleMusicTrack}
+          currentTrackName={currentTrackName}
+          currentTrackBpm={currentBpm}
+          totalCampaignStars={totalCampaignStars}
         />
       )}
 
@@ -261,12 +327,29 @@ export default function App() {
           isMusicMuted={isMusicMuted}
           missions={dailyMissions}
           buffs={activeBuffs}
+          currentSectorId={currentSectorId}
+          maxWaves={currentSectorDef.targetWaves}
+          combatIntensity={combatIntensity}
+          currentBpm={currentBpm}
+          currentTrackName={currentTrackName}
           onOpenMissions={() => setIsMissionsOpen(true)}
+          onOpenSectorMap={() => setIsSectorMapOpen(true)}
           missionAlert={missionAlert}
           onToggleMute={handleToggleMute}
           onToggleMusic={handleToggleMusic}
+          onNextTrack={handleCycleMusicTrack}
           onPause={handlePause}
           onRestart={handleRestart}
+        />
+      )}
+
+      {/* Campaign Sector Selection Modal */}
+      {isSectorMapOpen && (
+        <SectorSelectModal
+          currentSectorId={currentSectorId}
+          progressList={sectorProgress}
+          onSelectSector={handleSelectSector}
+          onClose={() => setIsSectorMapOpen(false)}
         />
       )}
 
@@ -289,9 +372,13 @@ export default function App() {
       <StatusModals
         status={gameStatus}
         stats={engineRef.current?.stats || runStats}
+        currentSectorId={currentSectorId}
+        starsEarned={starsEarned}
         onResume={handleResume}
         onRestart={handleRestart}
         onHome={handleHome}
+        onNextSector={handleNextSector}
+        onOpenSectorMap={() => setIsSectorMapOpen(true)}
       />
     </div>
   );

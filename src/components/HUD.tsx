@@ -1,7 +1,22 @@
+import React from 'react';
 import { ActiveMissionBuffs, DailyMission, PlayerState, RunStats, ShipClass } from '../game/types';
 import { ALL_PERKS } from '../game/constants';
-import { Shield, Zap, Heart, Volume2, VolumeX, Pause, RotateCcw, Gift, Sparkles, Music } from 'lucide-react';
-import { soundEngine } from '../game/audio';
+import { getSectorById } from '../game/sectors';
+import {
+  Shield,
+  Zap,
+  Heart,
+  Volume2,
+  VolumeX,
+  Pause,
+  RotateCcw,
+  Gift,
+  Sparkles,
+  Music,
+  Map,
+  Disc,
+  Activity,
+} from 'lucide-react';
 
 interface HUDProps {
   player: PlayerState;
@@ -12,10 +27,17 @@ interface HUDProps {
   isMusicMuted: boolean;
   missions: DailyMission[];
   buffs: ActiveMissionBuffs;
+  currentSectorId?: number;
+  maxWaves?: number;
+  combatIntensity?: number;
+  currentBpm?: number;
+  currentTrackName?: string;
   onOpenMissions: () => void;
+  onOpenSectorMap?: () => void;
   missionAlert: DailyMission | null;
   onToggleMute: () => void;
   onToggleMusic: () => void;
+  onNextTrack?: () => void;
   onPause: () => void;
   onRestart: () => void;
 }
@@ -29,10 +51,17 @@ export const HUD: React.FC<HUDProps> = ({
   isMusicMuted,
   missions,
   buffs,
+  currentSectorId = 1,
+  maxWaves = 4,
+  combatIntensity = 0.0,
+  currentBpm = 120,
+  currentTrackName = 'Kozmik Derinlik',
   onOpenMissions,
+  onOpenSectorMap,
   missionAlert,
   onToggleMute,
   onToggleMusic,
+  onNextTrack,
   onPause,
   onRestart,
 }) => {
@@ -46,18 +75,20 @@ export const HUD: React.FC<HUDProps> = ({
     : Math.max(0, (1 - player.dashTimer / player.dashCooldown) * 100);
 
   const isLowHp = player.hp < player.maxHp * 0.3;
+  const sector = getSectorById(currentSectorId);
+  const intensityPct = Math.round(combatIntensity * 100);
 
   return (
-    <div className="fixed inset-0 pointer-events-none z-20 flex flex-col justify-between p-4 md:p-6 select-none">
+    <div className="fixed inset-0 pointer-events-none z-20 flex flex-col justify-between p-3 md:p-6 select-none">
       {/* Critical Low HP Peripheral Vignette */}
       {isLowHp && (
-        <div className="absolute inset-0 pointer-events-none border-[12px] border-red-600/30 animate-pulse" />
+        <div className="absolute inset-0 pointer-events-none border-[12px] border-red-600/35 animate-pulse" />
       )}
 
       {/* Top Header Row */}
-      <div className="flex justify-between items-start w-full">
+      <div className="flex justify-between items-start w-full gap-2">
         {/* Top-Left: Player Vitality & Energy Sockets */}
-        <div className="flex flex-col gap-2 w-64 md:w-80">
+        <div className="flex flex-col gap-1.5 w-56 sm:w-64 md:w-76">
           {/* Level & Class tag */}
           <div className="flex items-center justify-between text-xs font-display">
             <div className="flex items-center gap-1.5">
@@ -81,7 +112,7 @@ export const HUD: React.FC<HUDProps> = ({
 
           {/* HP Bar with Trailing Damage Ghost */}
           <div className="relative flex flex-col">
-            <div className="flex justify-between text-[11px] font-mono text-slate-300 mb-1">
+            <div className="flex justify-between text-[11px] font-mono text-slate-300 mb-0.5">
               <span className="flex items-center gap-1 text-emerald-400 font-bold">
                 <Heart className="w-3 h-3 fill-emerald-400" /> GÖVDE (HP)
               </span>
@@ -89,7 +120,7 @@ export const HUD: React.FC<HUDProps> = ({
                 {Math.round(player.hp)} / {player.maxHp}
               </span>
             </div>
-            <div className="relative w-full h-3.5 bg-slate-950 rounded-sm border border-slate-700/80 overflow-hidden">
+            <div className="relative w-full h-3 bg-slate-950 rounded-sm border border-slate-700/80 overflow-hidden">
               {/* Trailing ghost bar */}
               <div
                 className="absolute top-0 bottom-0 left-0 bg-red-500/60 transition-all duration-300"
@@ -105,7 +136,7 @@ export const HUD: React.FC<HUDProps> = ({
 
           {/* Shield Bar */}
           <div className="relative flex flex-col">
-            <div className="flex justify-between text-[11px] font-mono text-slate-300 mb-1">
+            <div className="flex justify-between text-[11px] font-mono text-slate-300 mb-0.5">
               <span className="flex items-center gap-1 text-cyan-400 font-bold">
                 <Shield className="w-3 h-3 fill-cyan-400" /> KALKAN
               </span>
@@ -113,7 +144,7 @@ export const HUD: React.FC<HUDProps> = ({
                 {Math.round(player.shield)} / {player.maxShield}
               </span>
             </div>
-            <div className="relative w-full h-2.5 bg-slate-950 rounded-sm border border-slate-700/80 overflow-hidden">
+            <div className="relative w-full h-2 bg-slate-950 rounded-sm border border-slate-700/80 overflow-hidden">
               <div
                 className="h-full bg-gradient-to-r from-cyan-600 to-cyan-400 transition-all duration-100"
                 style={{ width: `${shieldPct}%` }}
@@ -123,7 +154,7 @@ export const HUD: React.FC<HUDProps> = ({
 
           {/* Dash Cooldown Indicator */}
           <div className="flex items-center gap-2 mt-0.5">
-            <span className="text-[10px] font-mono text-slate-400 tracking-wider">ATILMA [BOŞLUK]:</span>
+            <span className="text-[10px] font-mono text-slate-400 tracking-wider">ATILMA:</span>
             <div className="flex-1 h-1.5 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
               <div
                 className={`h-full transition-all duration-75 ${
@@ -140,18 +171,49 @@ export const HUD: React.FC<HUDProps> = ({
           </div>
         </div>
 
-        {/* Center: Wave Counter & Mission Completed Toast */}
-        <div className="flex flex-col items-center relative">
-          <div className="px-4 py-1.5 rounded-lg bg-slate-950/80 border border-slate-700/70 shadow-lg text-center">
-            <div className="text-[10px] font-display tracking-widest text-slate-400">SEKTÖR DALGASI</div>
-            <div className="text-xl font-display font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-blue-400">
-              {currentWave === 5 ? 'TİTAN SAVAŞI' : `DALGA ${currentWave} / 5`}
+        {/* Center: Sector Banner & Adaptive Music Gauge */}
+        <div className="flex flex-col items-center relative gap-1.5">
+          <div className="px-4 py-1.5 rounded-xl bg-slate-950/85 border border-cyan-500/40 shadow-[0_0_20px_rgba(6,182,212,0.25)] text-center">
+            <div className="flex items-center justify-center gap-1.5 text-[10px] font-display tracking-widest text-cyan-400 font-bold">
+              <span>{sector.code}</span>
+              <span>·</span>
+              <span className="text-white truncate max-w-[160px] md:max-w-[240px]">{sector.nameTr}</span>
+            </div>
+            <div className="text-lg md:text-xl font-display font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-sky-200 to-blue-400">
+              {currentWave === maxWaves && sector.bossNameTr
+                ? sector.bossNameTr
+                : `DALGA ${currentWave} / ${maxWaves}`}
             </div>
           </div>
 
+          {/* Dynamic Music Tempo & Intensity Live Gauge */}
+          {!isMusicMuted && (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-950/90 border border-slate-800 text-[10px] font-mono text-slate-300 pointer-events-auto">
+              <Disc className="w-3 h-3 text-cyan-400 animate-spin" />
+              <span className="text-cyan-300 font-bold truncate max-w-[110px]">{currentTrackName}</span>
+              <span className="text-amber-400 font-bold">[{currentBpm} BPM]</span>
+              <div className="flex items-center gap-1 text-slate-400 border-l border-slate-800 pl-1.5">
+                <Activity className="w-3 h-3 text-rose-400" />
+                <span className={intensityPct > 50 ? 'text-rose-400 font-bold' : 'text-slate-400'}>
+                  %{intensityPct} Şiddet
+                </span>
+              </div>
+              {onNextTrack && (
+                <button
+                  type="button"
+                  onClick={onNextTrack}
+                  className="ml-1 text-cyan-400 hover:text-cyan-200 underline cursor-pointer"
+                  title="Sonraki Müzik Parçası [N]"
+                >
+                  Sonraki
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Mission Completed Toast Banner */}
           {missionAlert && (
-            <div className="absolute top-16 z-30 pointer-events-none flex items-center gap-2.5 px-4 py-2 rounded-xl bg-slate-900/95 border border-cyan-400 text-white shadow-[0_0_25px_rgba(6,182,212,0.6)] animate-bounce whitespace-nowrap">
+            <div className="absolute top-20 z-30 pointer-events-none flex items-center gap-2.5 px-4 py-2 rounded-xl bg-slate-900/95 border border-cyan-400 text-white shadow-[0_0_25px_rgba(6,182,212,0.6)] animate-bounce whitespace-nowrap">
               <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
               <div className="text-left font-display">
                 <div className="text-[10px] text-cyan-300 tracking-wider uppercase font-bold">
@@ -166,18 +228,18 @@ export const HUD: React.FC<HUDProps> = ({
         </div>
 
         {/* Top-Right: Score, Combo & Utility Actions */}
-        <div className="flex items-start gap-3">
-          {/* Score, Bonus Multiplier & Combo */}
+        <div className="flex items-start gap-2 sm:gap-3">
+          {/* Score & Combo */}
           <div className="flex flex-col items-end text-right">
             <div className="flex items-center gap-1.5">
               {buffs.scoreMultiplier > 1.0 && (
                 <span className="text-[10px] font-mono text-amber-300 font-bold bg-amber-950/80 px-1.5 py-0.2 rounded border border-amber-500/40">
-                  +{Math.round((buffs.scoreMultiplier - 1.0) * 100)}% GÖREV BONUSU
+                  +{Math.round((buffs.scoreMultiplier - 1.0) * 100)}% BONUS
                 </span>
               )}
               <span className="text-[10px] font-display tracking-widest text-slate-400">SKOR</span>
             </div>
-            <div className="font-display font-black text-2xl md:text-3xl text-white tabular-nums drop-shadow-[0_0_12px_rgba(255,255,255,0.4)]">
+            <div className="font-display font-black text-xl md:text-3xl text-white tabular-nums drop-shadow-[0_0_12px_rgba(255,255,255,0.4)]">
               {stats.score.toLocaleString()}
             </div>
             {stats.combo > 1 && (
@@ -190,6 +252,23 @@ export const HUD: React.FC<HUDProps> = ({
 
           {/* Utility Buttons */}
           <div className="flex items-center gap-1.5 pointer-events-auto">
+            {/* Sector Map Button */}
+            {onOpenSectorMap && (
+              <button
+                type="button"
+                tabIndex={-1}
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onOpenSectorMap();
+                }}
+                title="Bölüm Haritası [C]"
+                aria-label="Bölüm Haritası"
+                className="p-2 rounded-lg bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/50 text-indigo-300 hover:text-white transition-colors cursor-pointer"
+              >
+                <Map className="w-4 h-4 text-indigo-400" />
+              </button>
+            )}
+
             {/* Daily Missions Toggle Button */}
             <button
               type="button"
@@ -203,7 +282,7 @@ export const HUD: React.FC<HUDProps> = ({
               className="flex items-center gap-1 px-2.5 py-2 rounded-lg bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/50 text-cyan-300 hover:text-white transition-colors cursor-pointer text-xs font-display font-bold shadow-[0_0_10px_rgba(6,182,212,0.25)]"
             >
               <Gift className="w-4 h-4 text-cyan-400" />
-              <span className="hidden md:inline">GÖREVLER</span>
+              <span className="hidden lg:inline">GÖREVLER</span>
               <span className="px-1 py-0.2 rounded-full bg-cyan-500 text-slate-950 text-[10px] font-black">
                 {missions.filter((m) => m.completed).length}/{missions.length}
               </span>
@@ -300,7 +379,7 @@ export const HUD: React.FC<HUDProps> = ({
 
         {/* Quick Kills & Time Info */}
         <div className="flex items-center gap-4 text-xs font-mono text-slate-400 bg-slate-950/70 px-3 py-1.5 rounded-lg border border-slate-800">
-          <span>YOK EDİLEN: <b className="text-white font-display">{stats.kills}</b></span>
+          <span>DÜŞMAN: <b className="text-white font-display">{stats.kills}</b></span>
           <span>SÜRE: <b className="text-white">{Math.floor(stats.timeElapsed)}s</b></span>
         </div>
       </div>

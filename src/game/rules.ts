@@ -122,3 +122,17 @@ export function getWaveTargetEnemies(wave: number): number {
   }
   return 12 + wave * 6;
 }
+
+export function calculateCombatIntensity(
+  enemyCount: number,
+  isBossAlive: boolean,
+  playerHpRatio: number,
+  combo: number
+): number {
+  const enemyFactor = Math.min(1.0, enemyCount / 14) * 0.45;
+  const bossFactor = isBossAlive ? 0.35 : 0;
+  const dangerFactor = playerHpRatio < 0.35 ? 0.2 : 0;
+  const comboFactor = Math.min(0.2, Math.max(0, combo - 1) * 0.04);
+  const total = enemyFactor + bossFactor + dangerFactor + comboFactor;
+  return Math.max(0, Math.min(1.0, Math.round(total * 100) / 100));
+}

@@ -17,7 +17,14 @@ export interface ShipClass {
   trailColor: string;
 }
 
-export type EnemyType = 'swarmer' | 'sniper' | 'charger' | 'titan_boss';
+export type EnemyType =
+  | 'swarmer'
+  | 'sniper'
+  | 'charger'
+  | 'titan_boss'
+  | 'aegis_sentinel'
+  | 'hive_queen'
+  | 'omega_primus';
 
 export interface Enemy {
   id: number;

@@ -1,38 +1,147 @@
-// Procedural Web Audio API sound & synthwave background music engine
+// Procedural Web Audio API sound & multi-track dynamic music engine
 
 export type MusicMood = 'title' | 'combat' | 'boss' | 'paused' | 'victory' | 'gameover';
 
-// Musical Note Frequencies (Hz) in D Minor Pentatonic & Aeolian
+// Musical Note Frequencies (Hz) for multi-scale synthesis
 export const MUSIC_FREQUENCIES: Record<string, number> = {
-  D1: 36.71,
+  // Low Sub Octaves
+  E1: 41.2,
+  F1: 43.65,
+  Fs1: 46.25,
+  G1: 49.0,
   A1: 55.0,
+  B1: 61.74,
+  C2: 65.41,
+  Cs2: 69.3,
   D2: 73.42,
+  Eb2: 77.78,
+  E2: 82.41,
   F2: 87.31,
+  Fs2: 92.5,
   G2: 98.0,
+  Ab2: 103.83,
   A2: 110.0,
   Bb2: 116.54,
+  B2: 123.47,
+  // Mid Range
   C3: 130.81,
+  Cs3: 138.59,
   D3: 146.83,
+  Eb3: 155.56,
   E3: 164.81,
   F3: 174.61,
+  Fs3: 185.0,
   G3: 196.0,
+  Ab3: 207.65,
   A3: 220.0,
+  Bb3: 233.08,
+  B3: 246.94,
+  // High / Lead / Arp Range
   C4: 261.63,
+  Cs4: 277.18,
   D4: 293.66,
+  Eb4: 311.13,
+  E4: 329.63,
   F4: 349.23,
+  Fs4: 369.99,
   G4: 392.0,
+  Ab4: 415.3,
   A4: 440.0,
+  Bb4: 466.16,
+  B4: 493.88,
   C5: 523.25,
   D5: 587.33,
+  E5: 659.25,
+  F5: 698.46,
+  G5: 783.99,
+  A5: 880.0,
 };
 
-// Pure logic helper for testing and state verification
+export interface MusicTrackDef {
+  id: number;
+  code: string;
+  nameTr: string;
+  nameEn: string;
+  genreTr: string;
+  key: string;
+  baseBpm: number;
+  descriptionTr: string;
+  accentColor: string;
+}
+
+export const MUSIC_TRACKS: MusicTrackDef[] = [
+  {
+    id: 0,
+    code: 'TRK-01',
+    nameTr: 'Kozmik Derinlik',
+    nameEn: 'Cosmic Ambient',
+    genreTr: 'Atmosferik Uzay Synth',
+    key: 'D Minor',
+    baseBpm: 96,
+    descriptionTr: 'Derin uzay dinginliği, yankılanan kristal arp ezgileri ve yumuşak alt bas.',
+    accentColor: '#38bdf8',
+  },
+  {
+    id: 1,
+    code: 'TRK-02',
+    nameTr: 'Siberpunk Hızlanış',
+    nameEn: 'Cyberpunk Neon Rush',
+    genreTr: 'Yüksek Hızlı Tekno',
+    key: 'A Minor',
+    baseBpm: 124,
+    descriptionTr: 'Senkoplu kare dalga bas ritmi, akıcı hi-hat vuruşları ve neon kulüp enerjisi.',
+    accentColor: '#a855f7',
+  },
+  {
+    id: 2,
+    code: 'TRK-03',
+    nameTr: 'Hiçlik Dretnotu',
+    nameEn: 'Void Industrial Drone',
+    genreTr: 'Karanlık Ağır Synth',
+    key: 'F# Minor',
+    baseBpm: 112,
+    descriptionTr: 'Ağır zırhlı endüstriyel dretnot sesi, bozulmuş testere alt basları ve sert trampetler.',
+    accentColor: '#f97316',
+  },
+  {
+    id: 3,
+    code: 'TRK-04',
+    nameTr: 'Yıldız Savaşçısı',
+    nameEn: 'Starlight Heroic Odyssey',
+    genreTr: 'Melodik Kahramanlık',
+    key: 'C Major / A Minor',
+    baseBpm: 128,
+    descriptionTr: 'Yükselen parlak synth lead melodileri, dörtnala itki ritmi ve galaktik zafer coşkusu.',
+    accentColor: '#34d399',
+  },
+  {
+    id: 4,
+    code: 'TRK-05',
+    nameTr: 'Omega Çekirdek',
+    nameEn: 'Omega Metal Overdrive',
+    genreTr: 'Savaş Metal Hızı',
+    key: 'E Phrygian',
+    baseBpm: 144,
+    descriptionTr: 'Çift bas davul saldırısı, çılgın 32lik bas yürüyüşü ve rezonans tepe filtreleri.',
+    accentColor: '#ef4444',
+  },
+];
+
+export function calculateDynamicBpm(baseBpm: number, combatIntensity: number): number {
+  const clampedIntensity = Math.max(0, Math.min(1, combatIntensity));
+  // Accelerates tempo up to +36 BPM during peak combat!
+  return Math.round(baseBpm + clampedIntensity * 36);
+}
+
 export interface AudioEngineSettings {
   sfxMuted: boolean;
   musicMuted: boolean;
   sfxVolume: number;
   musicVolume: number;
   currentMood: MusicMood;
+  currentTrackId: number;
+  combatIntensity: number;
+  effectiveBpm: number;
 }
 
 export class SoundEngine {
@@ -48,13 +157,14 @@ export class SoundEngine {
   private sfxVolume: number = 0.35;
   private musicVolume: number = 0.28;
 
-  // Music Sequencer State
+  // Multi-Track State
+  private currentTrackId: number = 0;
+  private combatIntensity: number = 0.0; // 0.0 (calm) to 1.0 (extreme combat)
   private currentMood: MusicMood = 'title';
   private isMusicPlaying: boolean = false;
   private schedulerTimerId: ReturnType<typeof setTimeout> | null = null;
   private nextStepTime: number = 0;
   private currentStep: number = 0;
-  private tempoBpm: number = 96;
 
   // Pad persistent oscillators
   private padOsc1: OscillatorNode | null = null;
@@ -67,13 +177,58 @@ export class SoundEngine {
   }
 
   public getSettings(): AudioEngineSettings {
+    const track = this.getCurrentTrack();
     return {
       sfxMuted: this.sfxMuted,
       musicMuted: this.musicMuted,
       sfxVolume: this.sfxVolume,
       musicVolume: this.musicVolume,
       currentMood: this.currentMood,
+      currentTrackId: this.currentTrackId,
+      combatIntensity: this.combatIntensity,
+      effectiveBpm: this.getCurrentBpm(),
     };
+  }
+
+  public getAvailableTracks(): MusicTrackDef[] {
+    return MUSIC_TRACKS;
+  }
+
+  public getCurrentTrack(): MusicTrackDef {
+    return MUSIC_TRACKS[this.currentTrackId] || MUSIC_TRACKS[0];
+  }
+
+  public getCurrentTrackId(): number {
+    return this.currentTrackId;
+  }
+
+  public selectTrack(trackId: number): MusicTrackDef {
+    const validId = Math.max(0, Math.min(MUSIC_TRACKS.length - 1, Math.floor(trackId)));
+    this.currentTrackId = validId;
+    this.updateDroneFrequencies();
+    return this.getCurrentTrack();
+  }
+
+  public nextTrack(): MusicTrackDef {
+    const nextId = (this.currentTrackId + 1) % MUSIC_TRACKS.length;
+    return this.selectTrack(nextId);
+  }
+
+  public setCombatIntensity(intensity: number) {
+    this.combatIntensity = Math.max(0, Math.min(1, intensity));
+    this.applyDynamicFilterAndIntensity();
+  }
+
+  public getCombatIntensity(): number {
+    return this.combatIntensity;
+  }
+
+  public getCurrentBpm(): number {
+    const base = this.getCurrentTrack().baseBpm;
+    if (this.currentMood === 'title') return 96;
+    if (this.currentMood === 'paused') return base;
+    if (this.currentMood === 'victory') return 108;
+    return calculateDynamicBpm(base, this.combatIntensity);
   }
 
   private initContext() {
@@ -97,7 +252,7 @@ export class SoundEngine {
         );
         this.sfxGain.connect(this.masterGain);
 
-        // Music Bus with Dynamic Resonant Lowpass Filter (muffled during pause/menu)
+        // Music Bus with Dynamic Resonant Lowpass Filter
         this.musicGain = this.ctx.createGain();
         this.musicGain.gain.setValueAtTime(
           this.musicMuted ? 0 : this.musicVolume,
@@ -155,7 +310,6 @@ export class SoundEngine {
     return this.musicMuted;
   }
 
-  // Master mute toggle (for backwards compatibility / 'M' key)
   public toggleMute(): boolean {
     const next = !this.sfxMuted;
     this.setSfxMuted(next);
@@ -184,10 +338,13 @@ export class SoundEngine {
     }
   }
 
-  // ---- Dynamic Procedural Synthwave Music Engine ----
+  // ---- Dynamic Procedural Multi-Track Music Engine ----
 
-  public startMusic(initialMood: MusicMood = 'title') {
+  public startMusic(initialMood: MusicMood = 'title', trackId?: number) {
     this.initContext();
+    if (trackId !== undefined) {
+      this.selectTrack(trackId);
+    }
     this.setMusicMood(initialMood);
 
     if (this.isMusicPlaying) return;
@@ -211,64 +368,94 @@ export class SoundEngine {
 
   public setMusicMood(mood: MusicMood) {
     this.currentMood = mood;
-    if (!this.ctx || !this.musicFilter || !this.musicGain) return;
-
-    const t = this.ctx.currentTime;
-
-    // Adapt tempo and filter resonance smoothly based on situation
-    switch (mood) {
-      case 'title':
-        this.tempoBpm = 96;
-        this.musicFilter.frequency.setTargetAtTime(1400, t, 0.4);
-        if (!this.musicMuted) {
-          this.musicGain.gain.setTargetAtTime(this.musicVolume * 0.8, t, 0.3);
-        }
-        break;
-
-      case 'combat':
-        this.tempoBpm = 124;
-        this.musicFilter.frequency.setTargetAtTime(3600, t, 0.3);
-        if (!this.musicMuted) {
-          this.musicGain.gain.setTargetAtTime(this.musicVolume, t, 0.2);
-        }
-        break;
-
-      case 'boss':
-        // Fast, intense battle tempo with open resonant filter
-        this.tempoBpm = 138;
-        this.musicFilter.frequency.setTargetAtTime(5400, t, 0.2);
-        if (!this.musicMuted) {
-          this.musicGain.gain.setTargetAtTime(this.musicVolume * 1.15, t, 0.2);
-        }
-        break;
-
-      case 'paused':
-        // Classic underwater / low-pass filter effect
-        this.musicFilter.frequency.setTargetAtTime(420, t, 0.2);
-        if (!this.musicMuted) {
-          this.musicGain.gain.setTargetAtTime(this.musicVolume * 0.45, t, 0.2);
-        }
-        break;
-
-      case 'victory':
-        this.tempoBpm = 104;
-        this.musicFilter.frequency.setTargetAtTime(2800, t, 0.4);
-        if (!this.musicMuted) {
-          this.musicGain.gain.setTargetAtTime(this.musicVolume * 0.7, t, 0.4);
-        }
-        break;
-
-      case 'gameover':
-        this.musicFilter.frequency.setTargetAtTime(300, t, 0.6);
-        if (!this.musicMuted) {
-          this.musicGain.gain.setTargetAtTime(this.musicVolume * 0.25, t, 0.6);
-        }
-        break;
-    }
+    this.applyDynamicFilterAndIntensity();
   }
 
   public getMusicMood(): MusicMood {
     return this.currentMood;
+  }
+
+  private applyDynamicFilterAndIntensity() {
+    if (!this.ctx || !this.musicFilter || !this.musicGain) return;
+    const t = this.ctx.currentTime;
+    const mood = this.currentMood;
+    const intensity = this.combatIntensity;
+
+    if (mood === 'paused') {
+      this.musicFilter.frequency.setTargetAtTime(420, t, 0.2);
+      this.musicFilter.Q.setTargetAtTime(1.0, t, 0.2);
+      if (!this.musicMuted) {
+        this.musicGain.gain.setTargetAtTime(this.musicVolume * 0.45, t, 0.2);
+      }
+      return;
+    }
+
+    if (mood === 'gameover') {
+      this.musicFilter.frequency.setTargetAtTime(280, t, 0.5);
+      if (!this.musicMuted) {
+        this.musicGain.gain.setTargetAtTime(this.musicVolume * 0.2, t, 0.5);
+      }
+      return;
+    }
+
+    if (mood === 'victory') {
+      this.musicFilter.frequency.setTargetAtTime(3200, t, 0.3);
+      if (!this.musicMuted) {
+        this.musicGain.gain.setTargetAtTime(this.musicVolume * 0.75, t, 0.3);
+      }
+      return;
+    }
+
+    if (mood === 'title') {
+      this.musicFilter.frequency.setTargetAtTime(1500, t, 0.4);
+      this.musicFilter.Q.setTargetAtTime(1.5, t, 0.3);
+      if (!this.musicMuted) {
+        this.musicGain.gain.setTargetAtTime(this.musicVolume * 0.8, t, 0.3);
+      }
+      return;
+    }
+
+    // Combat or Boss: Filter and resonance scale up with Combat Intensity!
+    const baseFreq = mood === 'boss' ? 4200 : 2600;
+    const targetFreq = baseFreq + intensity * 4200; // Opens up up to 6800-8400Hz!
+    const targetQ = 1.8 + intensity * 2.2; // Resonant bite during high danger
+    this.musicFilter.frequency.setTargetAtTime(targetFreq, t, 0.25);
+    this.musicFilter.Q.setTargetAtTime(targetQ, t, 0.25);
+
+    if (!this.musicMuted) {
+      const volBoost = 1.0 + intensity * 0.2;
+      this.musicGain.gain.setTargetAtTime(this.musicVolume * volBoost, t, 0.2);
+    }
+  }
+
+  private updateDroneFrequencies() {
+    if (!this.ctx || !this.padOsc1 || !this.padOsc2) return;
+    const t = this.ctx.currentTime;
+    const track = this.currentTrackId;
+
+    let f1 = MUSIC_FREQUENCIES.D2;
+    let f2 = MUSIC_FREQUENCIES.A2;
+
+    if (track === 1) {
+      // A Minor
+      f1 = MUSIC_FREQUENCIES.A1;
+      f2 = MUSIC_FREQUENCIES.E2;
+    } else if (track === 2) {
+      // F# Minor
+      f1 = MUSIC_FREQUENCIES.Fs1;
+      f2 = MUSIC_FREQUENCIES.Cs2;
+    } else if (track === 3) {
+      // C Major
+      f1 = MUSIC_FREQUENCIES.C2;
+      f2 = MUSIC_FREQUENCIES.G2;
+    } else if (track === 4) {
+      // E Phrygian
+      f1 = MUSIC_FREQUENCIES.E1;
+      f2 = MUSIC_FREQUENCIES.B1;
+    }
+
+    this.padOsc1.frequency.setTargetAtTime(f1, t, 0.5);
+    this.padOsc2.frequency.setTargetAtTime(f2, t, 0.5);
   }
 
   private startPadDrone() {
@@ -284,9 +471,8 @@ export class SoundEngine {
       this.padOsc1.type = 'sawtooth';
       this.padOsc2.type = 'triangle';
 
-      // D2 / A2 detuned lush drone
-      this.padOsc1.frequency.setValueAtTime(73.42, t);
-      this.padOsc2.frequency.setValueAtTime(110.0, t);
+      this.padOsc1.frequency.setValueAtTime(MUSIC_FREQUENCIES.D2, t);
+      this.padOsc2.frequency.setValueAtTime(MUSIC_FREQUENCIES.A2, t);
       this.padOsc1.detune.setValueAtTime(-6, t);
       this.padOsc2.detune.setValueAtTime(7, t);
 
@@ -313,12 +499,14 @@ export class SoundEngine {
     if (!this.isMusicPlaying) return;
 
     if (!this.ctx) {
-      this.schedulerTimerId = setTimeout(this.runMusicScheduler, 100);
+      // In non-browser / headless test environment without Web Audio context, do not loop
+      this.isMusicPlaying = false;
       return;
     }
 
     const scheduleAheadTime = 0.15; // 150ms lookahead
-    const stepDuration = 60 / this.tempoBpm / 4; // 16th note duration
+    const currentBpm = this.getCurrentBpm();
+    const stepDuration = 60 / currentBpm / 4; // 16th note duration
 
     while (this.nextStepTime < this.ctx.currentTime + scheduleAheadTime) {
       this.scheduleNote(this.currentStep, this.nextStepTime);
@@ -333,46 +521,416 @@ export class SoundEngine {
     if (!this.ctx || !this.musicFilter || this.musicMuted) return;
 
     const mood = this.currentMood;
-    if (mood === 'gameover') return; // Silence during game over
+    if (mood === 'gameover') return;
 
-    // 1. Kick Drum
-    if (mood === 'combat' || mood === 'boss') {
-      const isKickStep =
-        mood === 'boss'
-          ? step % 4 === 0 || step === 14 // Punchy driving boss kick
-          : step === 0 || step === 8; // Four-beat foundation
+    const trackId = this.currentTrackId;
+    const intensity = this.combatIntensity;
 
-      if (isKickStep) {
-        this.synthesizeKick(time, mood === 'boss' ? 0.35 : 0.22);
-      }
-    }
+    // 1. Kick Drum (Different rhythm patterns per track + intensity layer)
+    this.scheduleTrackKick(step, time, trackId, mood, intensity);
 
-    // 2. Hi-Hat
-    if (mood === 'combat' || mood === 'boss') {
-      // 16th or 8th ticking hi-hat
-      if (step % 2 === 0 || (mood === 'boss' && step % 2 === 1)) {
-        this.synthesizeHat(time, mood === 'boss' ? 0.05 : 0.035, step % 4 === 2);
-      }
-    }
+    // 2. Hi-Hat & Percussion
+    this.scheduleTrackHats(step, time, trackId, mood, intensity);
 
-    // 3. Cyberpunk Bassline
-    this.synthesizeBassStep(step, time, mood);
+    // 3. Bassline (Unique key, scales and synthesis for all 5 tracks)
+    this.scheduleTrackBass(step, time, trackId, mood, intensity);
 
-    // 4. Shimmering Arpeggios (Upper register)
+    // 4. Arpeggios & Leads
     if (mood !== 'paused') {
-      this.synthesizeArpStep(step, time, mood);
+      this.scheduleTrackLeadArp(step, time, trackId, mood, intensity);
     }
   }
 
-  private synthesizeKick(time: number, gainLevel: number) {
+  private scheduleTrackKick(
+    step: number,
+    time: number,
+    trackId: number,
+    mood: MusicMood,
+    intensity: number
+  ) {
+    if (mood === 'title' || mood === 'victory') {
+      if (step === 0 || step === 8) {
+        this.synthesizeKick(time, 0.18, 120, 36);
+      }
+      return;
+    }
+
+    let isKick = false;
+    let punch = 0.24;
+
+    switch (trackId) {
+      case 0: // Cosmic Ambient: Half-time soft heartbeat kick
+        isKick = step === 0 || step === 8;
+        punch = 0.22;
+        break;
+
+      case 1: // Cyberpunk Neon Rush: Four-on-the-floor + ghost kick on 14
+        isKick = step % 4 === 0 || (intensity > 0.4 && step === 14);
+        punch = 0.26 + intensity * 0.08;
+        break;
+
+      case 2: // Industrial Void: Booming half-time kick with sub punch
+        isKick = step === 0 || step === 6 || (intensity > 0.5 && step === 12);
+        punch = 0.32;
+        break;
+
+      case 3: // Heroic Odyssey: Energetic upbeat kick on 0, 4, 8, 12
+        isKick = step % 4 === 0;
+        punch = 0.25;
+        break;
+
+      case 4: // Omega Overdrive: Relentless double-bass kick attack
+        isKick =
+          step % 4 === 0 ||
+          step === 2 ||
+          step === 6 ||
+          step === 10 ||
+          step === 14 ||
+          (intensity > 0.5 && step % 2 === 0);
+        punch = 0.34;
+        break;
+    }
+
+    if (isKick) {
+      const startPitch = trackId === 2 ? 160 : trackId === 4 ? 145 : 135;
+      this.synthesizeKick(time, punch, startPitch, 35);
+    }
+  }
+
+  private scheduleTrackHats(
+    step: number,
+    time: number,
+    trackId: number,
+    mood: MusicMood,
+    intensity: number
+  ) {
+    if (mood === 'title') {
+      if (step === 4 || step === 12) {
+        this.synthesizeHat(time, 0.02, false, 7000);
+      }
+      return;
+    }
+
+    let playHat = false;
+    let isOpen = false;
+    let hatGain = 0.035;
+
+    switch (trackId) {
+      case 0: // Cosmic: Gentle ticking 8th notes
+        playHat = step % 4 === 2;
+        isOpen = step === 10;
+        hatGain = 0.025;
+        break;
+
+      case 1: // Cyberpunk: Fast 16th hats with off-beat open hat
+        playHat = step % 2 === 0 || intensity > 0.35;
+        isOpen = step % 4 === 2;
+        hatGain = 0.035 + intensity * 0.02;
+        break;
+
+      case 2: // Industrial: Metallic industrial sizzle
+        playHat = step % 4 === 2 || (step % 2 === 1 && intensity > 0.4);
+        isOpen = step === 8;
+        hatGain = 0.04;
+        break;
+
+      case 3: // Heroic: Crisp off-beat 8th hats (classic disco/synthwave gallop)
+        playHat = step % 2 === 1;
+        isOpen = step % 4 === 2;
+        hatGain = 0.032;
+        break;
+
+      case 4: // Omega Metal: Furious 16th hat barrage
+        playHat = true; // Every 16th note!
+        isOpen = step % 4 === 2;
+        hatGain = 0.045;
+        break;
+    }
+
+    if (playHat) {
+      this.synthesizeHat(time, hatGain, isOpen, trackId === 2 ? 5500 : 7500);
+    }
+  }
+
+  private scheduleTrackBass(
+    step: number,
+    time: number,
+    trackId: number,
+    mood: MusicMood,
+    intensity: number
+  ) {
+    if (!this.ctx || !this.musicFilter) return;
+
+    let freq = MUSIC_FREQUENCIES.D2;
+    let shouldPlay = false;
+    let waveType: OscillatorType = 'sawtooth';
+    let filterCutoff = 800;
+    let noteDuration = 0.14;
+    let bassVol = 0.2;
+
+    switch (trackId) {
+      // TRACK 0: Cosmic Ambient (D Minor: D -> F -> G -> A)
+      case 0: {
+        waveType = 'triangle';
+        shouldPlay = step % 4 === 0;
+        const barStep = step >> 2;
+        const notes = [
+          MUSIC_FREQUENCIES.D2,
+          MUSIC_FREQUENCIES.F2,
+          MUSIC_FREQUENCIES.G2,
+          MUSIC_FREQUENCIES.A1,
+        ];
+        freq = notes[barStep % notes.length];
+        filterCutoff = 550;
+        noteDuration = 0.22;
+        bassVol = 0.22;
+        break;
+      }
+
+      // TRACK 1: Cyberpunk Neon Rush (A Minor Dorian: A -> C -> D -> E with 16th roll)
+      case 1: {
+        waveType = 'square';
+        shouldPlay = step % 2 === 0 || (intensity > 0.4 && step % 2 === 1);
+        const subIndex = Math.floor(step / 4);
+        const progression = [
+          MUSIC_FREQUENCIES.A1,
+          MUSIC_FREQUENCIES.C2,
+          MUSIC_FREQUENCIES.D2,
+          MUSIC_FREQUENCIES.E2,
+        ];
+        freq = progression[subIndex % progression.length];
+        if (step % 4 === 3) freq = MUSIC_FREQUENCIES.G2;
+        filterCutoff = 950 + intensity * 600;
+        noteDuration = 0.11;
+        bassVol = 0.2;
+        break;
+      }
+
+      // TRACK 2: Void Industrial Drone (F# Minor Heavy Sub)
+      case 2: {
+        waveType = 'sawtooth';
+        shouldPlay = step === 0 || step === 3 || step === 6 || step === 10 || step === 12;
+        const fProg = [
+          MUSIC_FREQUENCIES.Fs1,
+          MUSIC_FREQUENCIES.Fs1,
+          MUSIC_FREQUENCIES.A1,
+          MUSIC_FREQUENCIES.Cs2,
+        ];
+        freq = fProg[Math.floor(step / 4) % fProg.length];
+        filterCutoff = 1100 + intensity * 700;
+        noteDuration = 0.16;
+        bassVol = 0.26;
+        break;
+      }
+
+      // TRACK 3: Heroic Odyssey (C Major / A Minor: C -> G -> A -> F uplifting pump)
+      case 3: {
+        waveType = 'sawtooth';
+        shouldPlay = step % 2 === 0;
+        const octaveHop = step % 4 === 2;
+        const rootIndex = Math.floor(step / 4);
+        const roots = [
+          MUSIC_FREQUENCIES.C2,
+          MUSIC_FREQUENCIES.G1,
+          MUSIC_FREQUENCIES.A1,
+          MUSIC_FREQUENCIES.F1,
+        ];
+        const baseNote = roots[rootIndex % roots.length];
+        freq = octaveHop ? baseNote * 2 : baseNote;
+        filterCutoff = 800 + intensity * 500;
+        noteDuration = 0.12;
+        bassVol = 0.21;
+        break;
+      }
+
+      // TRACK 4: Omega Overdrive (E Phrygian relentless metal rumble)
+      case 4: {
+        waveType = 'sawtooth';
+        shouldPlay = true; // Non-stop driving bass!
+        const cycle = step % 8;
+        const eNotes = [
+          MUSIC_FREQUENCIES.E1,
+          MUSIC_FREQUENCIES.E1,
+          MUSIC_FREQUENCIES.F1,
+          MUSIC_FREQUENCIES.E1,
+          MUSIC_FREQUENCIES.G1,
+          MUSIC_FREQUENCIES.E1,
+          MUSIC_FREQUENCIES.Bb1,
+          MUSIC_FREQUENCIES.A1,
+        ];
+        freq = eNotes[cycle];
+        filterCutoff = 1350 + intensity * 900;
+        noteDuration = 0.09;
+        bassVol = 0.25;
+        break;
+      }
+    }
+
+    if (!shouldPlay) return;
+
+    try {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      const filter = this.ctx.createBiquadFilter();
+
+      osc.type = waveType;
+      osc.frequency.setValueAtTime(freq, time);
+
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(filterCutoff, time);
+      filter.frequency.exponentialRampToValueAtTime(100, time + noteDuration);
+
+      gain.gain.setValueAtTime(bassVol, time);
+      gain.gain.exponentialRampToValueAtTime(0.001, time + noteDuration);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.musicFilter);
+
+      osc.start(time);
+      osc.stop(time + noteDuration);
+    } catch {}
+  }
+
+  private scheduleTrackLeadArp(
+    step: number,
+    time: number,
+    trackId: number,
+    mood: MusicMood,
+    intensity: number
+  ) {
+    if (!this.ctx || !this.musicFilter) return;
+
+    let freq = MUSIC_FREQUENCIES.D4;
+    let playArp = false;
+    let waveType: OscillatorType = 'sine';
+    let duration = 0.18;
+    let arpVol = 0.08 + intensity * 0.04;
+
+    switch (trackId) {
+      // TRACK 0: Cosmic Starlight (Pentatonic twinkle)
+      case 0: {
+        const starNotes = [
+          MUSIC_FREQUENCIES.D4,
+          MUSIC_FREQUENCIES.F4,
+          MUSIC_FREQUENCIES.A4,
+          MUSIC_FREQUENCIES.C5,
+          MUSIC_FREQUENCIES.D5,
+        ];
+        playArp = step % 4 === 2 || (intensity > 0.4 && step % 2 === 1);
+        freq = starNotes[(step >> 1) % starNotes.length];
+        waveType = 'sine';
+        duration = 0.28;
+        break;
+      }
+
+      // TRACK 1: Cyberpunk Neon Rush (Ascending / Descending syncopated arp)
+      case 1: {
+        const cyberNotes = [
+          MUSIC_FREQUENCIES.A4,
+          MUSIC_FREQUENCIES.C5,
+          MUSIC_FREQUENCIES.E5,
+          MUSIC_FREQUENCIES.G4,
+          MUSIC_FREQUENCIES.A4,
+          MUSIC_FREQUENCIES.D5,
+          MUSIC_FREQUENCIES.C5,
+          MUSIC_FREQUENCIES.E4,
+        ];
+        playArp = step % 2 === 1;
+        freq = cyberNotes[(step >> 1) % cyberNotes.length];
+        waveType = 'sawtooth';
+        duration = 0.12;
+        break;
+      }
+
+      // TRACK 2: Void Heavy Drone (Dark ominous stabs)
+      case 2: {
+        const voidNotes = [
+          MUSIC_FREQUENCIES.Fs4,
+          MUSIC_FREQUENCIES.Cs4,
+          MUSIC_FREQUENCIES.A4,
+          MUSIC_FREQUENCIES.Fs5,
+        ];
+        playArp = step === 4 || step === 12 || (intensity > 0.5 && step === 14);
+        freq = voidNotes[(step >> 2) % voidNotes.length];
+        waveType = 'sawtooth';
+        duration = 0.22;
+        break;
+      }
+
+      // TRACK 3: Heroic Odyssey (Soaring triumphant lead)
+      case 3: {
+        const heroicNotes = [
+          MUSIC_FREQUENCIES.C4,
+          MUSIC_FREQUENCIES.E4,
+          MUSIC_FREQUENCIES.G4,
+          MUSIC_FREQUENCIES.C5,
+          MUSIC_FREQUENCIES.D5,
+          MUSIC_FREQUENCIES.E5,
+          MUSIC_FREQUENCIES.G5,
+          MUSIC_FREQUENCIES.E5,
+        ];
+        playArp = step % 2 === 1;
+        freq = heroicNotes[(step >> 1) % heroicNotes.length];
+        waveType = 'triangle';
+        duration = 0.16;
+        break;
+      }
+
+      // TRACK 4: Omega Metal (Furious screeching shred arpeggio)
+      case 4: {
+        const metalNotes = [
+          MUSIC_FREQUENCIES.E4,
+          MUSIC_FREQUENCIES.F4,
+          MUSIC_FREQUENCIES.G4,
+          MUSIC_FREQUENCIES.Bb4,
+          MUSIC_FREQUENCIES.B4,
+          MUSIC_FREQUENCIES.D5,
+          MUSIC_FREQUENCIES.E5,
+          MUSIC_FREQUENCIES.F5,
+        ];
+        playArp = step % 2 === 1 || intensity > 0.6;
+        freq = metalNotes[step % metalNotes.length];
+        waveType = 'sawtooth';
+        duration = 0.08;
+        break;
+      }
+    }
+
+    if (!playArp) return;
+
+    try {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = waveType;
+      osc.frequency.setValueAtTime(freq, time);
+
+      gain.gain.setValueAtTime(arpVol, time);
+      gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+
+      osc.connect(gain);
+      gain.connect(this.musicFilter);
+
+      osc.start(time);
+      osc.stop(time + duration);
+    } catch {}
+  }
+
+  private synthesizeKick(
+    time: number,
+    gainLevel: number,
+    startPitch: number = 135,
+    endPitch: number = 38
+  ) {
     if (!this.ctx || !this.musicFilter) return;
     try {
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
 
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(135, time);
-      osc.frequency.exponentialRampToValueAtTime(38, time + 0.08);
+      osc.frequency.setValueAtTime(startPitch, time);
+      osc.frequency.exponentialRampToValueAtTime(endPitch, time + 0.08);
 
       gain.gain.setValueAtTime(gainLevel, time);
       gain.gain.exponentialRampToValueAtTime(0.001, time + 0.12);
@@ -385,11 +943,20 @@ export class SoundEngine {
     } catch {}
   }
 
-  private synthesizeHat(time: number, gainLevel: number, open: boolean = false) {
+  private synthesizeHat(
+    time: number,
+    gainLevel: number,
+    open: boolean = false,
+    cutoff: number = 6500
+  ) {
     if (!this.ctx || !this.musicFilter) return;
     try {
       const dur = open ? 0.06 : 0.025;
-      const buffer = this.ctx.createBuffer(1, Math.floor(this.ctx.sampleRate * dur), this.ctx.sampleRate);
+      const buffer = this.ctx.createBuffer(
+        1,
+        Math.floor(this.ctx.sampleRate * dur),
+        this.ctx.sampleRate
+      );
       const data = buffer.getChannelData(0);
       for (let i = 0; i < data.length; i++) {
         data[i] = Math.random() * 2 - 1;
@@ -400,7 +967,7 @@ export class SoundEngine {
 
       const filter = this.ctx.createBiquadFilter();
       filter.type = 'highpass';
-      filter.frequency.setValueAtTime(6500, time);
+      filter.frequency.setValueAtTime(cutoff, time);
 
       const gain = this.ctx.createGain();
       gain.gain.setValueAtTime(gainLevel, time);
@@ -412,145 +979,6 @@ export class SoundEngine {
 
       noise.start(time);
       noise.stop(time + dur);
-    } catch {}
-  }
-
-  private synthesizeBassStep(step: number, time: number, mood: MusicMood) {
-    if (!this.ctx || !this.musicFilter) return;
-
-    // Bass notes sequence (D minor progression: D -> F -> G -> A / Bb)
-    let freq = MUSIC_FREQUENCIES.D2;
-    let shouldPlay = false;
-
-    if (mood === 'title') {
-      // Slow ambient 8th pulses
-      if (step === 0) {
-        freq = MUSIC_FREQUENCIES.D2;
-        shouldPlay = true;
-      } else if (step === 8) {
-        freq = MUSIC_FREQUENCIES.A1;
-        shouldPlay = true;
-      }
-    } else if (mood === 'combat') {
-      // Driving 16th-note synthwave bass
-      shouldPlay = step % 2 === 0;
-      if (step < 4) freq = MUSIC_FREQUENCIES.D2;
-      else if (step < 8) freq = MUSIC_FREQUENCIES.F2;
-      else if (step < 12) freq = MUSIC_FREQUENCIES.G2;
-      else freq = MUSIC_FREQUENCIES.A2;
-    } else if (mood === 'boss') {
-      // Relentless 16th-note assault with octave ping-pong
-      shouldPlay = true;
-      const octaveNote = step % 2 === 1 ? MUSIC_FREQUENCIES.D3 : MUSIC_FREQUENCIES.D2;
-      if (step < 8) {
-        freq = octaveNote;
-      } else if (step < 12) {
-        freq = step % 2 === 1 ? MUSIC_FREQUENCIES.F3 : MUSIC_FREQUENCIES.F2;
-      } else {
-        freq = step % 2 === 1 ? MUSIC_FREQUENCIES.Bb2 : MUSIC_FREQUENCIES.A2;
-      }
-    } else if (mood === 'victory') {
-      // Triumphant progression (D -> G -> A -> D)
-      if (step === 0) {
-        freq = MUSIC_FREQUENCIES.D2;
-        shouldPlay = true;
-      } else if (step === 8) {
-        freq = MUSIC_FREQUENCIES.A2;
-        shouldPlay = true;
-      }
-    }
-
-    if (!shouldPlay) return;
-
-    try {
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      const filter = this.ctx.createBiquadFilter();
-
-      osc.type = mood === 'boss' ? 'sawtooth' : 'triangle';
-      osc.frequency.setValueAtTime(freq, time);
-
-      filter.type = 'lowpass';
-      const cutoff = mood === 'boss' ? 1200 : 700;
-      filter.frequency.setValueAtTime(cutoff, time);
-      filter.frequency.exponentialRampToValueAtTime(140, time + 0.12);
-
-      const dur = 0.14;
-      const vol = mood === 'boss' ? 0.24 : 0.18;
-      gain.gain.setValueAtTime(vol, time);
-      gain.gain.exponentialRampToValueAtTime(0.001, time + dur);
-
-      osc.connect(filter);
-      filter.connect(gain);
-      gain.connect(this.musicFilter);
-
-      osc.start(time);
-      osc.stop(time + dur);
-    } catch {}
-  }
-
-  private synthesizeArpStep(step: number, time: number, mood: MusicMood) {
-    if (!this.ctx || !this.musicFilter) return;
-
-    // Upper synth arpeggio notes
-    const arpNotes = [
-      MUSIC_FREQUENCIES.D4,
-      MUSIC_FREQUENCIES.F4,
-      MUSIC_FREQUENCIES.A4,
-      MUSIC_FREQUENCIES.C5,
-      MUSIC_FREQUENCIES.D5,
-      MUSIC_FREQUENCIES.C5,
-      MUSIC_FREQUENCIES.A4,
-      MUSIC_FREQUENCIES.F4,
-    ];
-
-    let playArp = false;
-    let noteIndex = 0;
-
-    if (mood === 'title') {
-      // Gentle cosmic twinkle every 4 steps
-      if (step === 4 || step === 12) {
-        playArp = true;
-        noteIndex = step === 4 ? 2 : 4;
-      }
-    } else if (mood === 'combat') {
-      // Syncopated synth arp
-      if (step % 2 === 1) {
-        playArp = true;
-        noteIndex = (step >> 1) % arpNotes.length;
-      }
-    } else if (mood === 'boss') {
-      // Intense arpeggio every odd step
-      if (step % 2 === 1) {
-        playArp = true;
-        noteIndex = ((step + 2) >> 1) % arpNotes.length;
-      }
-    } else if (mood === 'victory') {
-      if (step % 4 === 0) {
-        playArp = true;
-        noteIndex = (step / 4) % arpNotes.length;
-      }
-    }
-
-    if (!playArp) return;
-
-    try {
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(arpNotes[noteIndex], time);
-
-      const dur = mood === 'title' ? 0.45 : 0.16;
-      const vol = mood === 'boss' ? 0.14 : 0.09;
-      gain.gain.setValueAtTime(vol, time);
-      gain.gain.exponentialRampToValueAtTime(0.001, time + dur);
-
-      osc.connect(gain);
-      gain.connect(this.musicFilter);
-
-      osc.start(time);
-      osc.stop(time + dur);
     } catch {}
   }
 

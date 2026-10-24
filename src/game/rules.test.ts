@@ -10,6 +10,7 @@ import {
   applyPerk,
   checkWaveCompletion,
   getWaveTargetEnemies,
+  calculateCombatIntensity,
 } from './rules';
 import { PlayerState } from './types';
 
@@ -133,4 +134,18 @@ test('getWaveTargetEnemies supplies appropriate counts', () => {
   assert.equal(getWaveTargetEnemies(1), 18);
   assert.equal(getWaveTargetEnemies(2), 24);
   assert.equal(getWaveTargetEnemies(5), 16); // Boss encounter
+});
+
+test('calculateCombatIntensity computes responsive intensity', () => {
+  // Calm state: 0 enemies, no boss, 100% HP, combo 1 => 0.0
+  const calm = calculateCombatIntensity(0, false, 1.0, 1);
+  assert.equal(calm, 0);
+
+  // Moderate battle: 7 enemies, no boss, high HP, combo 2
+  const mid = calculateCombatIntensity(7, false, 1.0, 2);
+  assert.ok(mid >= 0.2 && mid <= 0.35);
+
+  // Severe boss fight with low HP: boss alive, 10 enemies, 20% HP, combo 5
+  const intense = calculateCombatIntensity(10, true, 0.2, 5);
+  assert.ok(intense >= 0.8 && intense <= 1.0);
 });

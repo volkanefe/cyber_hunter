@@ -73,8 +73,18 @@ export interface Gem {
   radius: number;
 }
 
+export type ParticleType =
+  | 'spark'
+  | 'muzzle_flash'
+  | 'plasma_trail'
+  | 'debris'
+  | 'shockwave'
+  | 'ember'
+  | 'smoke';
+
 export interface Particle {
   active: boolean;
+  type: ParticleType;
   x: number;
   y: number;
   vx: number;
@@ -82,8 +92,15 @@ export interface Particle {
   life: number;
   maxLife: number;
   size: number;
+  endSize?: number;
   color: string;
+  endColor?: string;
   alpha: number;
+  drag: number;
+  angle: number;
+  angularVelocity: number;
+  shape?: 'circle' | 'debris' | 'ring' | 'line';
+  blendMode?: 'source-over' | 'lighter';
 }
 
 export interface FloatingText {

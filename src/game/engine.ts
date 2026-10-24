@@ -306,6 +306,20 @@ export class GameEngine {
     if (typeof document !== 'undefined') {
       document.body.dataset.state = newStatus;
     }
+
+    // Adapt procedural synthwave music mood
+    if (newStatus === 'playing') {
+      soundEngine.startMusic(this.bossSpawned ? 'boss' : 'combat');
+    } else if (newStatus === 'paused') {
+      soundEngine.setMusicMood('paused');
+    } else if (newStatus === 'victory') {
+      soundEngine.setMusicMood('victory');
+    } else if (newStatus === 'gameover') {
+      soundEngine.setMusicMood('gameover');
+    } else if (newStatus === 'title') {
+      soundEngine.setMusicMood('title');
+    }
+
     this.callbacks.onStateChange(newStatus);
   }
 
@@ -342,6 +356,10 @@ export class GameEngine {
 
     if (e.key === 'm' || e.key === 'M') {
       soundEngine.toggleMute();
+    }
+
+    if (e.key === 'b' || e.key === 'B') {
+      soundEngine.toggleMusicMute();
     }
 
     if (e.key === 'r' || e.key === 'R') {
@@ -700,15 +718,28 @@ export class GameEngine {
     const perpY = forwardX;
 
     const baseSpeed = p.bulletSpeed;
+    const isHeavy = this.currentShipClass.id === 'dreadnought';
 
     if (p.doubleShot) {
       // Twin parallel barrels
       const offset = 8;
-      this.createPlayerBullet(p.x + perpX * offset, p.y + perpY * offset, forwardX, forwardY, baseSpeed);
-      this.createPlayerBullet(p.x - perpX * offset, p.y - perpY * offset, forwardX, forwardY, baseSpeed);
+      const b1X = p.x + perpX * offset + forwardX * 16;
+      const b1Y = p.y + perpY * offset + forwardY * 16;
+      const b2X = p.x - perpX * offset + forwardX * 16;
+      const b2Y = p.y - perpY * offset + forwardY * 16;
+      this.createPlayerBullet(b1X, b1Y, forwardX, forwardY, baseSpeed);
+      this.createPlayerBullet(b2X, b2Y, forwardX, forwardY, baseSpeed);
+      this.particles.emitMuzzleFlash(b1X, b1Y, p.angle, this.currentShipClass.color, isHeavy);
+      this.particles.emitMuzzleFlash(b2X, b2Y, p.angle, this.currentShipClass.color, isHeavy);
     } else {
-      this.createPlayerBullet(p.x + forwardX * 16, p.y + forwardY * 16, forwardX, forwardY, baseSpeed);
+      const bX = p.x + forwardX * 18;
+      const bY = p.y + forwardY * 18;
+      this.createPlayerBullet(bX, bY, forwardX, forwardY, baseSpeed);
+      this.particles.emitMuzzleFlash(bX, bY, p.angle, this.currentShipClass.color, isHeavy);
     }
+
+    // Camera punch for visceral recoil
+    this.trauma = Math.min(1, this.trauma + (isHeavy ? 0.08 : 0.03));
 
     // Homing micro-missiles if unlocked
     if (p.homingCount > 0 && Math.random() < 0.45) {
@@ -729,6 +760,7 @@ export class GameEngine {
         life: 2.2,
         maxLife: 2.2,
       });
+      this.particles.emitMuzzleFlash(p.x, p.y, hAngle, '#f59e0b', false);
     }
 
     // Recoil
@@ -787,6 +819,13 @@ export class GameEngine {
       b.x += b.vx * dt;
       b.y += b.vy * dt;
 
+      // Projectile exhaust trail
+      if (b.homing) {
+        this.particles.emitProjectileTrail(b.x, b.y, b.vx, b.vy, b.color, { size: 3.2, isHoming: true });
+      } else if (Math.random() < 0.4) {
+        this.particles.emitProjectileTrail(b.x, b.y, b.vx, b.vy, b.color, { size: b.radius * 0.75 });
+      }
+
       // Check collision with enemies
       for (const enemy of this.enemies) {
         if (circleIntersectsCircle(b.x, b.y, b.radius, enemy.x, enemy.y, enemy.radius)) {
@@ -794,7 +833,7 @@ export class GameEngine {
           enemy.hitFlashTimer = 0.08;
           this.stats.damageDealt += b.damage;
           soundEngine.playHit();
-          this.particles.emitHitSparks(b.x, b.y, b.color, 4);
+          this.particles.emitHitSparks(b.x, b.y, b.color, 5);
           this.addFloatingText(enemy.x, enemy.y, `-${b.damage}`, '#ffffff');
 
           b.pierce -= 1;
@@ -816,6 +855,11 @@ export class GameEngine {
       b.life -= dt;
       b.x += b.vx * dt;
       b.y += b.vy * dt;
+
+      // Trailing exhaust for enemy plasma / sniper bolts
+      if (Math.random() < 0.35) {
+        this.particles.emitProjectileTrail(b.x, b.y, b.vx, b.vy, b.color, { size: b.radius * 0.65 });
+      }
 
       // Collision with player
       if (
@@ -928,10 +972,13 @@ export class GameEngine {
               e.attackCooldown = 2.4;
               // Fire sniper bolt
               const shotAngle = Math.atan2(e.aimY! - e.y, e.aimX! - e.x);
+              const muzzleX = e.x + Math.cos(shotAngle) * 16;
+              const muzzleY = e.y + Math.sin(shotAngle) * 16;
+              this.particles.emitMuzzleFlash(muzzleX, muzzleY, shotAngle, '#c084fc', true);
               this.enemyBullets.push({
                 id: this.nextEntityId++,
-                x: e.x,
-                y: e.y,
+                x: muzzleX,
+                y: muzzleY,
                 vx: Math.cos(shotAngle) * 520,
                 vy: Math.sin(shotAngle) * 520,
                 radius: 4.5,
@@ -1045,10 +1092,13 @@ export class GameEngine {
       const spread = 0.2;
       for (let i = -2; i <= 2; i++) {
         const angle = baseAngle + i * spread;
+        const bx = boss.x + Math.cos(angle) * (boss.radius * 0.7);
+        const by = boss.y + Math.sin(angle) * (boss.radius * 0.7);
+        this.particles.emitMuzzleFlash(bx, by, angle, '#f43f5e', false);
         this.enemyBullets.push({
           id: this.nextEntityId++,
-          x: boss.x,
-          y: boss.y,
+          x: bx,
+          y: by,
           vx: Math.cos(angle) * 320,
           vy: Math.sin(angle) * 320,
           radius: 6,
@@ -1066,10 +1116,13 @@ export class GameEngine {
       const count = 12;
       for (let i = 0; i < count; i++) {
         const angle = (i / count) * Math.PI * 2;
+        const bx = boss.x + Math.cos(angle) * (boss.radius * 0.7);
+        const by = boss.y + Math.sin(angle) * (boss.radius * 0.7);
+        this.particles.emitMuzzleFlash(bx, by, angle, '#c084fc', true);
         this.enemyBullets.push({
           id: this.nextEntityId++,
-          x: boss.x,
-          y: boss.y,
+          x: bx,
+          y: by,
           vx: Math.cos(angle) * 280,
           vy: Math.sin(angle) * 280,
           radius: 7,
@@ -1101,7 +1154,20 @@ export class GameEngine {
     this.dispatchMissionEvent({ type: 'enemy_killed' });
 
     soundEngine.playExplosion(e.type === 'titan_boss' || e.type === 'charger');
-    this.particles.emitExplosion(e.x, e.y, e.color, e.type === 'titan_boss' ? 60 : 20, 1.3);
+    this.particles.emitEnemyExplosion(e.x, e.y, e.type, e.color);
+
+    // Dynamic screen shake and hitstop scaled by threat
+    if (e.type === 'titan_boss') {
+      this.trauma = Math.min(1, this.trauma + 0.65);
+      this.hitstopTimer = 0.08;
+    } else if (e.type === 'charger') {
+      this.trauma = Math.min(1, this.trauma + 0.32);
+      this.hitstopTimer = 0.03;
+    } else if (e.type === 'sniper') {
+      this.trauma = Math.min(1, this.trauma + 0.18);
+    } else {
+      this.trauma = Math.min(1, this.trauma + 0.12);
+    }
 
     // Spawn XP gems and chance for healing drop
     const gemCount = e.type === 'titan_boss' ? 12 : e.type === 'charger' ? 3 : 1;
@@ -1261,6 +1327,7 @@ export class GameEngine {
     if (this.currentWave === 5 && !this.bossSpawned) {
       this.bossSpawned = true;
       soundEngine.playBossAlarm();
+      soundEngine.setMusicMood('boss');
       this.addFloatingText(this.player.x, this.player.y - 60, 'UYARI: TİTAN VOİD MUHAFIZI!', '#ef4444');
       // Spawn Titan Boss
       this.enemies.push({

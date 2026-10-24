@@ -1,6 +1,6 @@
 import { ActiveMissionBuffs, DailyMission, PlayerState, RunStats, ShipClass } from '../game/types';
 import { ALL_PERKS } from '../game/constants';
-import { Shield, Zap, Heart, Volume2, VolumeX, Pause, RotateCcw, Gift, Sparkles } from 'lucide-react';
+import { Shield, Zap, Heart, Volume2, VolumeX, Pause, RotateCcw, Gift, Sparkles, Music } from 'lucide-react';
 import { soundEngine } from '../game/audio';
 
 interface HUDProps {
@@ -9,11 +9,13 @@ interface HUDProps {
   currentWave: number;
   shipClass: ShipClass;
   isMuted: boolean;
+  isMusicMuted: boolean;
   missions: DailyMission[];
   buffs: ActiveMissionBuffs;
   onOpenMissions: () => void;
   missionAlert: DailyMission | null;
   onToggleMute: () => void;
+  onToggleMusic: () => void;
   onPause: () => void;
   onRestart: () => void;
 }
@@ -24,11 +26,13 @@ export const HUD: React.FC<HUDProps> = ({
   currentWave,
   shipClass,
   isMuted,
+  isMusicMuted,
   missions,
   buffs,
   onOpenMissions,
   missionAlert,
   onToggleMute,
+  onToggleMusic,
   onPause,
   onRestart,
 }) => {
@@ -205,6 +209,26 @@ export const HUD: React.FC<HUDProps> = ({
               </span>
             </button>
 
+            {/* Background Music Toggle Button */}
+            <button
+              type="button"
+              tabIndex={-1}
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onToggleMusic();
+              }}
+              title="Fon Müziğini Aç/Kapat [B]"
+              aria-label="Fon Müziğini Aç/Kapat"
+              className={`p-2 rounded-lg border transition-colors cursor-pointer ${
+                isMusicMuted
+                  ? 'bg-slate-900/80 border-slate-700 text-slate-500 hover:text-slate-300'
+                  : 'bg-cyan-950/70 border-cyan-500/50 text-cyan-300 hover:text-cyan-100 shadow-[0_0_10px_rgba(6,182,212,0.3)]'
+              }`}
+            >
+              <Music className={`w-4 h-4 ${!isMusicMuted ? 'animate-pulse' : ''}`} />
+            </button>
+
+            {/* Sound FX Toggle Button */}
             <button
               type="button"
               tabIndex={-1}
@@ -212,8 +236,8 @@ export const HUD: React.FC<HUDProps> = ({
                 e.currentTarget.blur();
                 onToggleMute();
               }}
-              title="Sesi Aç/Kapat [M]"
-              aria-label="Sesi Aç/Kapat"
+              title="Ses Efektlerini Aç/Kapat [M]"
+              aria-label="Ses Efektlerini Aç/Kapat"
               className="p-2 rounded-lg bg-slate-900/80 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
             >
               {isMuted ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4 text-cyan-400" />}

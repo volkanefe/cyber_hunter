@@ -140,4 +140,4 @@ export const WORLD_BOUNDS = {
   height: 2600,
 };
 
-export const MAX_PARTICLES = 350;
+export const MAX_PARTICLES = 650;

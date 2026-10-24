@@ -25,6 +25,7 @@ export default function App() {
   const [selectedClass, setSelectedClass] = useState<ShipClassId>('vanguard');
   const [perkChoices, setPerkChoices] = useState<Perk[]>([]);
   const [isMuted, setIsMuted] = useState<boolean>(false);
+  const [isMusicMuted, setIsMusicMuted] = useState<boolean>(() => soundEngine.isMusicMuted());
   const [currentWave, setCurrentWave] = useState<number>(1);
 
   // Daily Missions state
@@ -130,11 +131,34 @@ export default function App() {
     };
   }, [handleResize]);
 
-  // Global 'g' key shortcut for daily missions
+  // Audio gesture initialization for browser autoplay policy
+  useEffect(() => {
+    const handleFirstGesture = () => {
+      soundEngine.startMusic('title');
+      window.removeEventListener('click', handleFirstGesture);
+      window.removeEventListener('keydown', handleFirstGesture);
+    };
+    window.addEventListener('click', handleFirstGesture, { once: true });
+    window.addEventListener('keydown', handleFirstGesture, { once: true });
+    return () => {
+      window.removeEventListener('click', handleFirstGesture);
+      window.removeEventListener('keydown', handleFirstGesture);
+    };
+  }, []);
+
+  // Global key shortcuts for daily missions, music and sound
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.key === 'g' || e.key === 'G') && gameStatus !== 'title') {
         setIsMissionsOpen((prev) => !prev);
+      }
+      if (e.key === 'b' || e.key === 'B') {
+        const nextMuted = soundEngine.toggleMusicMute();
+        setIsMusicMuted(nextMuted);
+      }
+      if (e.key === 'm' || e.key === 'M') {
+        const nextMuted = soundEngine.toggleMute();
+        setIsMuted(nextMuted);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -165,6 +189,11 @@ export default function App() {
   const handleToggleMute = () => {
     const muted = soundEngine.toggleMute();
     setIsMuted(muted);
+  };
+
+  const handleToggleMusic = () => {
+    const muted = soundEngine.toggleMusicMute();
+    setIsMusicMuted(muted);
   };
 
   const handlePause = () => {
@@ -216,6 +245,8 @@ export default function App() {
           missions={dailyMissions}
           buffs={activeBuffs}
           onOpenMissions={() => setIsMissionsOpen(true)}
+          isMusicMuted={isMusicMuted}
+          onToggleMusic={handleToggleMusic}
         />
       )}
 
@@ -227,11 +258,13 @@ export default function App() {
           currentWave={currentWave}
           shipClass={SHIP_CLASSES[selectedClass]}
           isMuted={isMuted}
+          isMusicMuted={isMusicMuted}
           missions={dailyMissions}
           buffs={activeBuffs}
           onOpenMissions={() => setIsMissionsOpen(true)}
           missionAlert={missionAlert}
           onToggleMute={handleToggleMute}
+          onToggleMusic={handleToggleMusic}
           onPause={handlePause}
           onRestart={handleRestart}
         />

@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { SHIP_CLASSES } from '../game/constants';
 import { ActiveMissionBuffs, DailyMission, ShipClassId } from '../game/types';
-import { Shield, Zap, Wind, Gift, Sparkles } from 'lucide-react';
+import { Shield, Zap, Wind, Gift, Sparkles, Music } from 'lucide-react';
 
 interface TitleScreenProps {
   selectedClass: ShipClassId;
@@ -11,6 +11,8 @@ interface TitleScreenProps {
   missions: DailyMission[];
   buffs: ActiveMissionBuffs;
   onOpenMissions: () => void;
+  isMusicMuted: boolean;
+  onToggleMusic: () => void;
 }
 
 export const TitleScreen: React.FC<TitleScreenProps> = ({
@@ -21,6 +23,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   missions,
   buffs,
   onOpenMissions,
+  isMusicMuted,
+  onToggleMusic,
 }) => {
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -52,6 +56,21 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Background Music Toggle */}
+          <button
+            type="button"
+            onClick={onToggleMusic}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-display font-bold transition-all cursor-pointer ${
+              isMusicMuted
+                ? 'bg-slate-900/80 hover:bg-slate-800 border-slate-700 text-slate-500'
+                : 'bg-cyan-950/80 hover:bg-cyan-900 border-cyan-500/50 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.3)]'
+            }`}
+            title="Fon Müziğini Aç/Kapat [B]"
+          >
+            <Music className={`w-3.5 h-3.5 ${!isMusicMuted ? 'text-cyan-400 animate-pulse' : 'text-slate-500'}`} />
+            <span>{isMusicMuted ? 'MÜZİK: KAPALI' : 'MÜZİK: AÇIK'}</span>
+          </button>
+
           {/* Daily Missions Action Button */}
           <button
             type="button"
@@ -181,7 +200,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
       {/* Flat Control Hints Footer */}
       <div className="w-full text-center text-xs text-slate-400 tracking-wider">
-        <span>WASD Hareket · Fare / Boşluk Ateş · Sağ Tık / Shift Atılma · P Duraklat · M Ses Aç/Kapa</span>
+        <span>WASD Hareket · Fare / Boşluk Ateş · Sağ Tık / Shift Atılma · P Duraklat · M Sesler · B Müzik · G Görevler</span>
       </div>
     </div>
   );

@@ -63,8 +63,16 @@ Standart sürü böcekleri ve keskin nişancıların yanı sıra filoya yeni eli
 
 ---
 
-### 5. 🌀 Roguelite Yükseltmeleri ve Günlük Görevler
-- **Seviye Atlama**: Düşmanlardan düşen enerji kürelerini toplayarak seviye atlayın; her seviyede sunulan 3 rastgele yükseltme kartından birini seçin (ör. Artırılmış Hasar, Hızlı Kalkan Yenilenmesi, İlave Atılma Yükü, Hareket Hızı).
+### 5. 🌀 Kalıcı Sefer İlerlemesi ve Bölüm Geçişlerinde Gemi Koruması
+- **Bölüm Geçişlerinde Tam Koruma**: Herhangi bir sektör/bölüm tamamlandığında ve sonraki bölüme geçildiğinde, geminizin kazandığı **tüm özellikler aynen korunur**:
+  - Gemi Seviyesi (Level) ve mevcut XP ilerlemesi
+  - Gövde (HP) ve Kalkan (Shield) üst sınır geliştirmeleri (yeni sektöre başlarken tamir edilerek tam kapasiteye çıkarılır)
+  - Seçilen tüm Roguelite perkleri (Çift Namlu, Delici Mermiler, Manyetik Toplayıcı, EMP Nova, vb.)
+  - Açılan tüm özel silahlar ve aktif silah seçimi
+  - Kanat roket bataryası geliştirmeleri
+- **Derin Uzay Sıçraması (Uzak Mesafe Warp Atılması)**:
+  - Sıçrama (Dash) yeteneği derin uzayın vakum fiziğiyle güçlendirilerek menzili **750 - 950+ piksele** çıkarıldı.
+  - Sıçrama anında gemi arkasında kinetik şok dalgası halkaları ve hiper-uzay ışık izi bırakır; düşman kuşatmalarından anında sıyrılmanızı ve geniş sektör haritasında hızla yer değiştirmenizi sağlar.
 - **Gezegen Etkileşimi & Madencilik**: Haritada bulunan gezegenlerin çekim alanına girerek kaynak toplayabilir veya gövdenizi onarabilirsiniz.
 - **Günlük Görev Sistemi**: Her gün yenilenen görevleri tamamlayarak kalıcı güçlendirme (buff) ödülleri kazanın.
 - **Performans Dostu Parçacık Sistemi**: Bellek çöpü (garbage collection) yaratmayan sıfır-tahsisli havuzlama (object pooling) ile 60+ FPS akıcı görsel efektler.

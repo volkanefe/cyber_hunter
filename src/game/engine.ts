@@ -6,6 +6,9 @@ import {
   distance,
   getXpRequiredForLevel,
   calculateCombatIntensity,
+  preparePlayerForNextSector,
+  ACTIVE_DASH_DURATION,
+  calculateDashVelocity,
 } from './rules';
 import {
   Bullet,
@@ -339,9 +342,15 @@ export class GameEngine {
     soundEngine.selectTrack(this.currentSector.recommendedTrackId);
   }
 
-  public startRun(classId?: ShipClassId, sectorId?: number) {
+  public startRun(
+    classId?: ShipClassId,
+    sectorId?: number,
+    preserveProgress: boolean = false
+  ) {
     if (classId) {
-      this.setShipClass(classId);
+      if (!preserveProgress || classId !== this.currentShipClass.id) {
+        this.setShipClass(classId);
+      }
     }
     if (sectorId !== undefined) {
       this.selectSector(sectorId);
@@ -350,7 +359,37 @@ export class GameEngine {
       soundEngine.selectTrack(this.currentSector.recommendedTrackId);
     }
 
-    this.player = this.createDefaultPlayer(this.currentShipClass);
+    if (preserveProgress && this.player) {
+      // Preserve all acquired upgrades, perks, levels, xp, weapons, and repair ship
+      this.player = preparePlayerForNextSector(
+        this.player,
+        WORLD_BOUNDS.width / 2,
+        WORLD_BOUNDS.height / 2
+      );
+      this.stats = {
+        ...this.stats,
+        combo: 1,
+        highestCombo: this.stats.highestCombo,
+        comboTimer: 0,
+        waveReached: 1,
+        perks: [...this.stats.perks],
+      };
+    } else {
+      this.player = this.createDefaultPlayer(this.currentShipClass);
+      this.stats = {
+        score: 0,
+        highScore: this.stats.highScore,
+        combo: 1,
+        highestCombo: 1,
+        comboTimer: 0,
+        kills: 0,
+        damageDealt: 0,
+        waveReached: 1,
+        timeElapsed: 0,
+        perks: [],
+      };
+    }
+
     this.enemies = [];
     this.playerBullets = [];
     this.enemyBullets = [];
@@ -358,7 +397,7 @@ export class GameEngine {
     this.floatingTexts = [];
     this.particles.clear();
 
-    // Reset planets scan progress
+    // Reset planets scan progress for the new sector
     for (const p of this.planets) {
       p.scanned = false;
       p.scanProgress = 0;
@@ -369,23 +408,26 @@ export class GameEngine {
     this.waveSpawnRemaining = Math.round(12 * this.currentSector.spawnRateMultiplier);
     this.spawnCooldown = 2.0;
 
-    this.stats = {
-      score: 0,
-      highScore: this.stats.highScore,
-      combo: 1,
-      highestCombo: 1,
-      comboTimer: 0,
-      kills: 0,
-      damageDealt: 0,
-      waveReached: 1,
-      timeElapsed: 0,
-      perks: [],
-    };
-
     this.setStatus('playing');
     this.callbacks.onWaveStart(1);
     this.callbacks.onStatsUpdate(this.stats);
     this.callbacks.onPlayerUpdate(this.player);
+
+    if (preserveProgress) {
+      soundEngine.playLevelUp();
+      this.addFloatingText(
+        this.player.x,
+        this.player.y - 70,
+        `${this.currentSector.code}: ${this.currentSector.nameTr}`,
+        '#38bdf8'
+      );
+      this.addFloatingText(
+        this.player.x,
+        this.player.y - 45,
+        'TÜM GEMİ ÖZELLİKLERİ VE YÜKSELTMELERİ KORUNDU!',
+        '#4ade80'
+      );
+    }
   }
 
   public setStatus(newStatus: GameStatus) {
@@ -603,12 +645,16 @@ export class GameEngine {
     this.player.dashTimer = this.player.dashCooldown;
     soundEngine.playDash();
 
-    // Dash burst vector
-    const dashAngle = this.player.angle;
-    this.player.vx = Math.cos(dashAngle) * (this.player.speed * 2.8);
-    this.player.vy = Math.sin(dashAngle) * (this.player.speed * 2.8);
+    // High-distance deep space warp leap vector (~750-950 pixels)
+    const { vx, vy } = calculateDashVelocity(this.player.angle, this.player.speed, 6.5);
+    this.player.vx = vx;
+    this.player.vy = vy;
 
-    this.particles.emitExplosion(this.player.x, this.player.y, this.currentShipClass.color, 14, 1.2);
+    // Deep space warp leap visual effects: shockwave rings and cosmic warp flash
+    this.particles.emitShockwave(this.player.x, this.player.y, '#38bdf8', 10, 60, 0.35);
+    this.particles.emitExplosion(this.player.x, this.player.y, this.currentShipClass.color, 22, 1.5);
+    this.trauma = Math.min(1.0, this.trauma + 0.12);
+    this.addFloatingText(this.player.x, this.player.y - 45, 'UZAY SIÇRAMASI!', '#38bdf8');
   }
 
   public selectPerk(perk: Perk) {
@@ -878,8 +924,8 @@ export class GameEngine {
       }
     }
 
-    // Drag
-    const drag = Math.pow(0.88, dt * 60);
+    // Drag: In deep space warp leap (isDashing), inertia preserves hyper-drive velocity without friction
+    const drag = p.isDashing ? Math.pow(0.985, dt * 60) : Math.pow(0.88, dt * 60);
     p.vx *= drag;
     p.vy *= drag;
 
@@ -899,12 +945,17 @@ export class GameEngine {
     p.x = clamp(p.x, 60, WORLD_BOUNDS.width - 60);
     p.y = clamp(p.y, 60, WORLD_BOUNDS.height - 60);
 
-    // Dash cooldown
+    // Dash cooldown & active leap duration
     if (p.dashTimer > 0) {
       p.dashTimer -= dt;
-      if (p.dashTimer <= p.dashCooldown - 0.25) {
+      if (p.dashTimer <= p.dashCooldown - ACTIVE_DASH_DURATION) {
         p.isDashing = false;
       }
+    }
+
+    // Trailing hyper-drive warp particles during active leap
+    if (p.isDashing && Math.random() < 0.75) {
+      this.particles.emitThrust(p.x, p.y, Math.atan2(p.vy, p.vx), '#38bdf8');
     }
 
     // Hit flash timer

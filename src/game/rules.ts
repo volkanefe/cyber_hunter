@@ -136,3 +136,70 @@ export function calculateCombatIntensity(
   const total = enemyFactor + bossFactor + dangerFactor + comboFactor;
   return Math.max(0, Math.min(1.0, Math.round(total * 100) / 100));
 }
+
+/**
+ * Preserves all acquired ship attributes, levels, perks, upgrades, and weapons across sectors,
+ * while repairing hull and shields and placing the ship at the new sector entry coordinates.
+ */
+export function preparePlayerForNextSector(
+  player: PlayerState,
+  entryX: number = 1300,
+  entryY: number = 1300
+): PlayerState {
+  return {
+    ...player,
+    x: entryX,
+    y: entryY,
+    vx: 0,
+    vy: 0,
+    hp: player.maxHp,
+    shield: player.maxShield,
+    shieldRechargeTimer: 0,
+    dashTimer: 0,
+    isDashing: false,
+    hitFlashTimer: 0,
+    invulnerabilityTimer: 2.5,
+    recentDamageGhost: player.maxHp,
+    ghostFadeTimer: 0,
+    wingRocketCooldown: 0,
+    wingRocketReady: true,
+  };
+}
+
+export const ACTIVE_DASH_DURATION = 0.45; // Active leap duration in seconds
+
+/**
+ * Calculates the high-impulse velocity vector for deep space warp leaps (sıçrama).
+ * Enables the ship to jump across large galactic distances (~700-950+ pixels).
+ */
+export function calculateDashVelocity(
+  angle: number,
+  playerSpeed: number,
+  multiplier: number = 6.5
+): { vx: number; vy: number; speed: number } {
+  const dashSpeed = Math.max(1800, playerSpeed * multiplier);
+  return {
+    vx: Math.cos(angle) * dashSpeed,
+    vy: Math.sin(angle) * dashSpeed,
+    speed: dashSpeed,
+  };
+}
+
+/**
+ * Estimates total distance covered during a deep space leap taking into account
+ * active duration and vacuum warp inertia.
+ */
+export function estimateDashDistance(
+  dashSpeed: number,
+  duration: number = ACTIVE_DASH_DURATION
+): number {
+  let dist = 0;
+  let v = dashSpeed;
+  const dt = 1 / 60;
+  const steps = Math.round(duration / dt);
+  for (let i = 0; i < steps; i++) {
+    dist += v * dt;
+    v *= Math.pow(0.985, dt * 60);
+  }
+  return Math.round(dist);
+}

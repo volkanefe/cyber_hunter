@@ -1,6 +1,16 @@
 import React, { useEffect } from 'react';
 import { GameStatus, RunStats } from '../game/types';
-import { Trophy, Skull, Play, RotateCcw, Home, Star, ArrowRight, Map } from 'lucide-react';
+import {
+  Trophy,
+  Skull,
+  Play,
+  RotateCcw,
+  Home,
+  Star,
+  ArrowRight,
+  Map,
+  ShieldCheck,
+} from 'lucide-react';
 import { CAMPAIGN_SECTORS, getSectorById } from '../game/sectors';
 
 interface StatusModalsProps {
@@ -188,6 +198,12 @@ export const StatusModals: React.FC<StatusModalsProps> = ({
           </div>
 
           <div className="flex flex-col gap-2 pt-1">
+            {/* Preserved attributes guarantee badge */}
+            <div className="flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-emerald-950/80 border border-emerald-500/50 text-[11px] font-display font-bold text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.3)]">
+              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>Gemi seviyeniz, yükseltmeleriniz ve silahlarınız sonraki bölüme aynen aktarılacak!</span>
+            </div>
+
             {hasNextSector && (
               <button
                 type="button"

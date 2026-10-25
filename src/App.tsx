@@ -231,7 +231,8 @@ export default function App() {
     if (engineRef.current) {
       engineRef.current.selectSector(sectorId);
       if (gameStatus !== 'title') {
-        engineRef.current.startRun(selectedClass, sectorId);
+        const shouldPreserve = gameStatus === 'victory';
+        engineRef.current.startRun(selectedClass, sectorId, shouldPreserve);
       }
     }
   };
@@ -239,7 +240,8 @@ export default function App() {
   const handleNextSector = (nextSectorId: number) => {
     setCurrentSectorId(nextSectorId);
     if (engineRef.current) {
-      engineRef.current.startRun(selectedClass, nextSectorId);
+      // Preserve all ship upgrades, perks, levels, and weapons into the next sector!
+      engineRef.current.startRun(selectedClass, nextSectorId, true);
     }
   };
 

@@ -11,6 +11,10 @@ import {
   checkWaveCompletion,
   getWaveTargetEnemies,
   calculateCombatIntensity,
+  preparePlayerForNextSector,
+  ACTIVE_DASH_DURATION,
+  calculateDashVelocity,
+  estimateDashDistance,
 } from './rules';
 import { PlayerState } from './types';
 
@@ -154,4 +158,105 @@ test('calculateCombatIntensity computes responsive intensity', () => {
   // Severe boss fight with low HP: boss alive, 10 enemies, 20% HP, combo 5
   const intense = calculateCombatIntensity(10, true, 0.2, 5);
   assert.ok(intense >= 0.8 && intense <= 1.0);
+});
+
+test('preparePlayerForNextSector preserves all acquired attributes, levels, perks, and weapons', () => {
+  const upgradedPlayer: PlayerState = {
+    x: 450,
+    y: 890,
+    vx: 120,
+    vy: -80,
+    angle: 1.57,
+    hp: 45,
+    maxHp: 180, // upgraded via nanites
+    shield: 10,
+    maxShield: 120, // upgraded via plasma shield
+    shieldRechargeTimer: 1.2,
+    speed: 285, // upgraded via overcharge thrust
+    fireRate: 6.8, // upgraded via hyper cooling
+    fireCooldown: 0.1,
+    dashCooldown: 1.8,
+    dashTimer: 0.8,
+    isDashing: true,
+    bulletDamage: 38,
+    bulletSpeed: 620,
+    pierceCount: 3,
+    doubleShot: true,
+    homingCount: 2,
+    magnetRadius: 280,
+    empCooldown: 8.0,
+    empTimer: 3.5,
+    level: 7,
+    xp: 42,
+    xpToNextLevel: 140,
+    hitFlashTimer: 0.05,
+    invulnerabilityTimer: 0,
+    recentDamageGhost: 70,
+    ghostFadeTimer: 0.4,
+    currentWeapon: 'quantum_railgun',
+    unlockedWeapons: [
+      'plasma_blaster',
+      'scatter_cannon',
+      'quantum_railgun',
+      'vortex_missiles',
+      'tesla_arc',
+    ],
+    wingRocketCooldown: 0.7,
+    wingRocketMaxCooldown: 1.8,
+    wingRocketAlternate: true,
+    wingRocketReady: false,
+  };
+
+  const nextSectorPlayer = preparePlayerForNextSector(upgradedPlayer, 1200, 1200);
+
+  // Attributes must be strictly preserved!
+  assert.equal(nextSectorPlayer.level, 7);
+  assert.equal(nextSectorPlayer.xp, 42);
+  assert.equal(nextSectorPlayer.xpToNextLevel, 140);
+  assert.equal(nextSectorPlayer.maxHp, 180);
+  assert.equal(nextSectorPlayer.maxShield, 120);
+  assert.equal(nextSectorPlayer.speed, 285);
+  assert.equal(nextSectorPlayer.fireRate, 6.8);
+  assert.equal(nextSectorPlayer.bulletDamage, 38);
+  assert.equal(nextSectorPlayer.bulletSpeed, 620);
+  assert.equal(nextSectorPlayer.pierceCount, 3);
+  assert.equal(nextSectorPlayer.doubleShot, true);
+  assert.equal(nextSectorPlayer.homingCount, 2);
+  assert.equal(nextSectorPlayer.magnetRadius, 280);
+  assert.equal(nextSectorPlayer.empCooldown, 8.0);
+  assert.equal(nextSectorPlayer.currentWeapon, 'quantum_railgun');
+  assert.equal(nextSectorPlayer.unlockedWeapons.length, 5);
+
+  // Ship must be repaired and shielded for new sector
+  assert.equal(nextSectorPlayer.hp, 180);
+  assert.equal(nextSectorPlayer.shield, 120);
+  assert.equal(nextSectorPlayer.shieldRechargeTimer, 0);
+
+  // Transient state reset at new coordinates
+  assert.equal(nextSectorPlayer.x, 1200);
+  assert.equal(nextSectorPlayer.y, 1200);
+  assert.equal(nextSectorPlayer.vx, 0);
+  assert.equal(nextSectorPlayer.vy, 0);
+  assert.equal(nextSectorPlayer.isDashing, false);
+  assert.equal(nextSectorPlayer.dashTimer, 0);
+  assert.equal(nextSectorPlayer.invulnerabilityTimer, 2.5);
+  assert.equal(nextSectorPlayer.wingRocketCooldown, 0);
+  assert.equal(nextSectorPlayer.wingRocketReady, true);
+});
+
+test('calculateDashVelocity and estimateDashDistance reach long deep space distances', () => {
+  const baseSpeed = 240;
+  const leap = calculateDashVelocity(0, baseSpeed);
+
+  // Impulse speed should be at least 1500px/s (default 1800)
+  assert.ok(leap.speed >= 1500);
+  assert.equal(leap.vx, leap.speed);
+  assert.equal(leap.vy, 0);
+
+  // Distance across deep space leap must be significantly greater than old 200px hop
+  const estDist = estimateDashDistance(leap.speed, ACTIVE_DASH_DURATION);
+  assert.ok(
+    estDist >= 600,
+    `Deep space leap distance should be >= 600px, but was ${estDist}px`
+  );
 });

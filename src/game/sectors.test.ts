@@ -74,3 +74,30 @@ test('getSectorById returns expected sector or fallback', () => {
   const fallback = getSectorById(999);
   assert.strictEqual(fallback.id, 1);
 });
+
+test('All sectors have distinct deep space backgrounds, nebulae, and end-of-sector golden bosses', () => {
+  const gradients = new Set<string>();
+
+  for (const s of CAMPAIGN_SECTORS) {
+    // 1. Distinct deep space background gradient
+    assert.ok(Array.isArray(s.bgGradient) && s.bgGradient.length === 2, `Sector ${s.id} must have 2-color bgGradient`);
+    const gradKey = `${s.bgGradient[0]}_${s.bgGradient[1]}`;
+    assert.ok(!gradients.has(gradKey), `Sector ${s.id} should have a unique deep space gradient`);
+    gradients.add(gradKey);
+
+    // 2. Cosmic nebulae clouds defined
+    assert.ok(Array.isArray(s.nebulae) && s.nebulae.length >= 3, `Sector ${s.id} must have at least 3 nebulae`);
+    for (const n of s.nebulae) {
+      assert.ok(n.r >= 200, `Nebula radius must be substantial: ${n.r}`);
+      assert.ok(n.color.startsWith('rgba('));
+    }
+
+    // 3. Starlight tint
+    assert.ok(s.starTint && s.starTint.startsWith('#'));
+
+    // 4. End-of-sector Boss definition
+    assert.ok(s.bossArchetype, `Sector ${s.id} must culminate in a boss fight`);
+    assert.ok(s.bossNameTr && s.bossNameTr.length > 0, `Sector ${s.id} must have a Turkish boss name`);
+  }
+});
+

@@ -289,6 +289,13 @@ export type MissionEvent =
   | { type: 'planet_scanned'; planetId: string }
   | { type: 'boss_defeated' };
 
+export type GalaxyArchetype =
+  | 'grand_spiral'
+  | 'barred_spiral'
+  | 'ring'
+  | 'elliptical'
+  | 'starburst';
+
 export interface CelestialGalaxy {
   id: number;
   x: number;
@@ -299,6 +306,10 @@ export interface CelestialGalaxy {
   arms: number;
   colorCore: string;
   colorArm: string;
+  colorDust?: string;
+  archetype?: GalaxyArchetype;
+  tilt?: number;
+  dustDensity?: number;
   parallaxFactor: number;
 }
 

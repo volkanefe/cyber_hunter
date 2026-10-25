@@ -48,6 +48,7 @@ import {
 } from './sectors';
 import {
   createDefaultGalaxies,
+  createSectorGalaxies,
   createDefaultPlanets,
   drawGalaxy,
   drawPlanet,
@@ -82,6 +83,7 @@ export interface EngineCallbacks {
   onMissionCompletedAlert?: (mission: DailyMission) => void;
   onSectorVictory?: (data: SectorVictoryData) => void;
   onIntensityChange?: (intensity: number, bpm: number) => void;
+  onSectorChange?: (sector: SectorDef) => void;
 }
 
 export class GameEngine {
@@ -139,7 +141,7 @@ export class GameEngine {
   private survivalTimerAccumulator: number = 0;
 
   // Celestial Bodies: Galaxies and Planets
-  public galaxies: CelestialGalaxy[] = createDefaultGalaxies();
+  public galaxies: CelestialGalaxy[] = createSectorGalaxies(1);
   public planets: Planet[] = createDefaultPlanets();
 
   // Screen Shake & Hitstop
@@ -176,6 +178,9 @@ export class GameEngine {
     // Load missions & active buffs
     this.dailyMissions = loadSavedMissions();
     this.activeBuffs = calculateActiveMissionBuffs(this.dailyMissions);
+    if (typeof window !== 'undefined') {
+      (window as any).__ENGINE__ = this;
+    }
 
     this.player = this.createDefaultPlayer(this.currentShipClass);
     this.initStars();
@@ -339,7 +344,9 @@ export class GameEngine {
   public selectSector(sectorId: number) {
     this.currentSector = getSectorById(sectorId);
     this.maxWaves = this.currentSector.targetWaves;
+    this.galaxies = createSectorGalaxies(this.currentSector.id);
     soundEngine.selectTrack(this.currentSector.recommendedTrackId);
+    this.callbacks.onSectorChange?.(this.currentSector);
   }
 
   public startRun(
@@ -356,6 +363,7 @@ export class GameEngine {
       this.selectSector(sectorId);
     } else {
       this.maxWaves = this.currentSector.targetWaves;
+      this.galaxies = createSectorGalaxies(this.currentSector.id);
       soundEngine.selectTrack(this.currentSector.recommendedTrackId);
     }
 
@@ -1587,156 +1595,198 @@ export class GameEngine {
     const baseAngle = Math.atan2(this.player.y - boss.y, this.player.x - boss.x);
 
     if (boss.type === 'omega_primus') {
-      // Omega Titan Primus: 16-bullet radial storm + 2 high-speed sniper bolts
-      const count = isEnraged ? 18 : 14;
+      // Colossal Golden Omega Primus: 20-bullet golden solar storm + dual high-speed piercing golden beams
+      const count = isEnraged ? 22 : 16;
       for (let i = 0; i < count; i++) {
-        const angle = (i / count) * Math.PI * 2 + (isEnraged ? boss.angle : 0);
-        const bx = boss.x + Math.cos(angle) * (boss.radius * 0.8);
-        const by = boss.y + Math.sin(angle) * (boss.radius * 0.8);
-        this.particles.emitMuzzleFlash(bx, by, angle, '#ef4444', true);
+        const angle = (i / count) * Math.PI * 2 + (isEnraged ? boss.angle * 1.5 : 0);
+        const bx = boss.x + Math.cos(angle) * (boss.radius * 0.85);
+        const by = boss.y + Math.sin(angle) * (boss.radius * 0.85);
+        this.particles.emitMuzzleFlash(bx, by, angle, '#facc15', true);
         this.enemyBullets.push({
           id: this.nextEntityId++,
           x: bx,
           y: by,
-          vx: Math.cos(angle) * 310,
-          vy: Math.sin(angle) * 310,
-          radius: 7,
-          damage: 24,
+          vx: Math.cos(angle) * (isEnraged ? 350 : 310),
+          vy: Math.sin(angle) * (isEnraged ? 350 : 310),
+          radius: 7.5,
+          damage: 26,
           isPlayer: false,
-          color: '#ef4444',
+          color: '#facc15',
           pierce: 1,
           homing: false,
-          life: 4.0,
-          maxLife: 4.0,
+          life: 4.2,
+          maxLife: 4.2,
         });
       }
-      // Direct sniper bolt towards player
-      this.enemyBullets.push({
-        id: this.nextEntityId++,
-        x: boss.x + Math.cos(baseAngle) * boss.radius,
-        y: boss.y + Math.sin(baseAngle) * boss.radius,
-        vx: Math.cos(baseAngle) * 540,
-        vy: Math.sin(baseAngle) * 540,
-        radius: 6,
-        damage: 28,
-        isPlayer: false,
-        color: '#facc15',
-        pierce: 1,
-        homing: false,
-        life: 2.2,
-        maxLife: 2.2,
-      });
-      if (isEnraged) this.addFloatingText(boss.x, boss.y - 40, 'HİÇLİK GAZI!', '#ef4444');
+      // Dual high-speed piercing solar laser bolts directed at player
+      for (const off of [-0.15, 0.15]) {
+        const a = baseAngle + off;
+        this.enemyBullets.push({
+          id: this.nextEntityId++,
+          x: boss.x + Math.cos(a) * boss.radius,
+          y: boss.y + Math.sin(a) * boss.radius,
+          vx: Math.cos(a) * 560,
+          vy: Math.sin(a) * 560,
+          radius: 6.5,
+          damage: 32,
+          isPlayer: false,
+          color: '#fef08a',
+          pierce: 1,
+          homing: false,
+          life: 2.4,
+          maxLife: 2.4,
+        });
+      }
+      if (isEnraged) this.addFloatingText(boss.x, boss.y - 45, 'ALTIN GÜNEŞ KIYAMETİ!', '#facc15');
       return;
     }
 
     if (boss.type === 'aegis_sentinel') {
-      // Aegis Sentinel: 7-bullet wide spread volley
-      const spread = 0.16;
-      for (let i = -3; i <= 3; i++) {
+      // Golden Aegis Sentinel: 9-bullet wide spread solar volley + frontal golden shock cannon
+      const count = isEnraged ? 11 : 9;
+      const spread = 0.15;
+      const half = Math.floor(count / 2);
+      for (let i = -half; i <= half; i++) {
         const angle = baseAngle + i * spread;
-        const bx = boss.x + Math.cos(angle) * (boss.radius * 0.7);
-        const by = boss.y + Math.sin(angle) * (boss.radius * 0.7);
-        this.particles.emitMuzzleFlash(bx, by, angle, '#6366f1', false);
+        const bx = boss.x + Math.cos(angle) * (boss.radius * 0.75);
+        const by = boss.y + Math.sin(angle) * (boss.radius * 0.75);
+        this.particles.emitMuzzleFlash(bx, by, angle, '#facc15', false);
         this.enemyBullets.push({
           id: this.nextEntityId++,
           x: bx,
           y: by,
-          vx: Math.cos(angle) * 340,
-          vy: Math.sin(angle) * 340,
-          radius: 5.5,
-          damage: 20,
+          vx: Math.cos(angle) * 350,
+          vy: Math.sin(angle) * 350,
+          radius: 6,
+          damage: 22,
           isPlayer: false,
-          color: '#6366f1',
-          pierce: 1,
-          homing: false,
-          life: 3.2,
-          maxLife: 3.2,
-        });
-      }
-      return;
-    }
-
-    if (boss.type === 'hive_queen') {
-      // Hive Queen: Cluster venom barrage + minion swarm reinforcement
-      for (let i = -2; i <= 2; i++) {
-        const angle = baseAngle + (Math.random() - 0.5) * 0.6;
-        const bx = boss.x + Math.cos(angle) * (boss.radius * 0.7);
-        const by = boss.y + Math.sin(angle) * (boss.radius * 0.7);
-        this.particles.emitMuzzleFlash(bx, by, angle, '#ec4899', false);
-        this.enemyBullets.push({
-          id: this.nextEntityId++,
-          x: bx,
-          y: by,
-          vx: Math.cos(angle) * (260 + Math.random() * 80),
-          vy: Math.sin(angle) * (260 + Math.random() * 80),
-          radius: 6.5,
-          damage: 19,
-          isPlayer: false,
-          color: '#ec4899',
+          color: '#fde047',
           pierce: 1,
           homing: false,
           life: 3.5,
           maxLife: 3.5,
         });
       }
-      // Spawn extra swarmers if room
-      if (this.enemies.length < 8) {
-        this.spawnRandomEnemy();
+      if (isEnraged) {
+        // High-velocity central golden solar core blast
+        this.enemyBullets.push({
+          id: this.nextEntityId++,
+          x: boss.x + Math.cos(baseAngle) * boss.radius,
+          y: boss.y + Math.sin(baseAngle) * boss.radius,
+          vx: Math.cos(baseAngle) * 520,
+          vy: Math.sin(baseAngle) * 520,
+          radius: 8,
+          damage: 30,
+          isPlayer: false,
+          color: '#facc15',
+          pierce: 1,
+          homing: false,
+          life: 2.5,
+          maxLife: 2.5,
+        });
+        this.addFloatingText(boss.x, boss.y - 45, 'AŞIRI YÜKLÜ ALTIN KALKAN!', '#eab308');
       }
       return;
     }
 
-    // Default Titan Boss
+    if (boss.type === 'hive_queen') {
+      // Golden Hive Queen: Cluster solar venom + golden minion reinforcements
+      const bulletCount = isEnraged ? 9 : 6;
+      for (let i = 0; i < bulletCount; i++) {
+        const angle = baseAngle + (Math.random() - 0.5) * 0.8;
+        const bx = boss.x + Math.cos(angle) * (boss.radius * 0.75);
+        const by = boss.y + Math.sin(angle) * (boss.radius * 0.75);
+        this.particles.emitMuzzleFlash(bx, by, angle, '#facc15', false);
+        this.enemyBullets.push({
+          id: this.nextEntityId++,
+          x: bx,
+          y: by,
+          vx: Math.cos(angle) * (280 + Math.random() * 90),
+          vy: Math.sin(angle) * (280 + Math.random() * 90),
+          radius: 7,
+          damage: 22,
+          isPlayer: false,
+          color: '#facc15',
+          pierce: 1,
+          homing: false,
+          life: 3.8,
+          maxLife: 3.8,
+        });
+      }
+      if (this.enemies.length < 8) {
+        this.spawnRandomEnemy();
+      }
+      if (isEnraged) this.addFloatingText(boss.x, boss.y - 45, 'ALTIN KOVAN İSTİLASI!', '#f59e0b');
+      return;
+    }
+
+    // Golden Titan Boss (Sectors 1, 2, 4, 6, 7, 9)
     if (!isEnraged) {
-      // 5-bullet arc towards player
-      const spread = 0.2;
-      for (let i = -2; i <= 2; i++) {
+      // 7-bullet wide golden fan volley + central piercing shot
+      const spread = 0.18;
+      for (let i = -3; i <= 3; i++) {
         const angle = baseAngle + i * spread;
-        const bx = boss.x + Math.cos(angle) * (boss.radius * 0.7);
-        const by = boss.y + Math.sin(angle) * (boss.radius * 0.7);
-        this.particles.emitMuzzleFlash(bx, by, angle, '#f43f5e', false);
+        const bx = boss.x + Math.cos(angle) * (boss.radius * 0.75);
+        const by = boss.y + Math.sin(angle) * (boss.radius * 0.75);
+        this.particles.emitMuzzleFlash(bx, by, angle, '#facc15', false);
+        this.enemyBullets.push({
+          id: this.nextEntityId++,
+          x: bx,
+          y: by,
+          vx: Math.cos(angle) * 330,
+          vy: Math.sin(angle) * 330,
+          radius: 6.5,
+          damage: 22,
+          isPlayer: false,
+          color: '#fde047',
+          pierce: 1,
+          homing: false,
+          life: 3.6,
+          maxLife: 3.6,
+        });
+      }
+      // Direct golden solar orb
+      this.enemyBullets.push({
+        id: this.nextEntityId++,
+        x: boss.x + Math.cos(baseAngle) * boss.radius,
+        y: boss.y + Math.sin(baseAngle) * boss.radius,
+        vx: Math.cos(baseAngle) * 480,
+        vy: Math.sin(baseAngle) * 480,
+        radius: 8,
+        damage: 28,
+        isPlayer: false,
+        color: '#facc15',
+        pierce: 1,
+        homing: false,
+        life: 2.6,
+        maxLife: 2.6,
+      });
+    } else {
+      // Enraged: 16-bullet spinning golden spiral nova + high damage shockwave!
+      const count = 16;
+      for (let i = 0; i < count; i++) {
+        const angle = (i / count) * Math.PI * 2 + boss.angle * 1.8;
+        const bx = boss.x + Math.cos(angle) * (boss.radius * 0.8);
+        const by = boss.y + Math.sin(angle) * (boss.radius * 0.8);
+        this.particles.emitMuzzleFlash(bx, by, angle, '#facc15', true);
         this.enemyBullets.push({
           id: this.nextEntityId++,
           x: bx,
           y: by,
           vx: Math.cos(angle) * 320,
           vy: Math.sin(angle) * 320,
-          radius: 6,
-          damage: 18,
+          radius: 7.5,
+          damage: 26,
           isPlayer: false,
-          color: '#f43f5e',
-          pierce: 1,
-          homing: false,
-          life: 3.5,
-          maxLife: 3.5,
-        });
-      }
-    } else {
-      // Enraged: 12-bullet radial shockwave ring!
-      const count = 12;
-      for (let i = 0; i < count; i++) {
-        const angle = (i / count) * Math.PI * 2;
-        const bx = boss.x + Math.cos(angle) * (boss.radius * 0.7);
-        const by = boss.y + Math.sin(angle) * (boss.radius * 0.7);
-        this.particles.emitMuzzleFlash(bx, by, angle, '#c084fc', true);
-        this.enemyBullets.push({
-          id: this.nextEntityId++,
-          x: bx,
-          y: by,
-          vx: Math.cos(angle) * 280,
-          vy: Math.sin(angle) * 280,
-          radius: 7,
-          damage: 22,
-          isPlayer: false,
-          color: '#a855f7',
+          color: '#facc15',
           pierce: 1,
           homing: false,
           life: 4.0,
           maxLife: 4.0,
         });
       }
-      this.addFloatingText(boss.x, boss.y - 40, 'ÖFKE MODU!', '#ef4444');
+      this.trauma = Math.min(1.0, this.trauma + 0.15);
+      this.addFloatingText(boss.x, boss.y - 45, 'ALTIN GÜNEŞ FIRTINASI!', '#facc15');
     }
   }
 
@@ -1958,7 +2008,7 @@ export class GameEngine {
     this.spawnCooldown -= dt;
 
     const isFinalWave = this.currentWave === this.maxWaves;
-    const hasBoss = this.currentSector.bossArchetype && this.currentSector.bossArchetype !== 'none';
+    const hasBoss = Boolean(this.currentSector.bossArchetype);
 
     if (isFinalWave && hasBoss && !this.bossSpawned) {
       this.bossSpawned = true;
@@ -1993,54 +2043,46 @@ export class GameEngine {
   private spawnSectorBoss() {
     const s = this.currentSector;
     const hpMult = s.enemyHpMultiplier;
-    let bossType: EnemyType = 'titan_boss';
-    let bossHp = 750;
-    let bossRadius = 42;
-    let bossColor = '#f43f5e';
-    let alertText = 'UYARI: TİTAN VOİD MUHAFIZI!';
+    let bossType: EnemyType = s.bossArchetype || 'titan_boss';
+    let bossHp = 880 + (s.id - 1) * 120;
+    let bossRadius = 60; // Imposing large scale ("biraz büyük")
+    const bossColor = '#facc15'; // Brilliant Golden Solar Yellow ("sarı")
+    const alertText = `UYARI: ${s.bossNameTr || 'ALTIN TİTAN MUHAFIZI'}!`;
 
-    if (s.bossArchetype === 'aegis_sentinel') {
-      bossType = 'aegis_sentinel';
-      bossHp = 650;
-      bossRadius = 40;
-      bossColor = '#6366f1';
-      alertText = 'UYARI: AEGIS MUHAFIZ DRETNOTU!';
-    } else if (s.bossArchetype === 'hive_queen') {
-      bossType = 'hive_queen';
-      bossHp = 850;
-      bossRadius = 44;
-      bossColor = '#ec4899';
-      alertText = 'UYARI: BİYOLOJİK KOVAN KRALİÇESİ!';
-    } else if (s.bossArchetype === 'omega_primus') {
-      bossType = 'omega_primus';
-      bossHp = 1400;
-      bossRadius = 50;
-      bossColor = '#ef4444';
-      alertText = 'KRİTİK TEHDİT: OMEGA TİTAN PRİMUS!';
+    if (bossType === 'aegis_sentinel') {
+      bossHp = 820 + (s.id - 1) * 110;
+      bossRadius = 58;
+    } else if (bossType === 'hive_queen') {
+      bossHp = 980 + (s.id - 1) * 130;
+      bossRadius = 62;
+    } else if (bossType === 'omega_primus') {
+      bossHp = 1650 + (s.id - 1) * 160;
+      bossRadius = 68;
     }
 
     bossHp = Math.round(bossHp * hpMult);
-    this.addFloatingText(this.player.x, this.player.y - 60, alertText, bossColor);
+    this.addFloatingText(this.player.x, this.player.y - 70, alertText, '#facc15');
+    this.addFloatingText(this.player.x, this.player.y - 45, 'AĞIR ALTIN ZIRH VE SOLAR ÇEKİRDEK DEVREDE!', '#fde047');
 
     this.enemies.push({
       id: this.nextEntityId++,
       type: bossType,
-      x: this.player.x + 350,
+      x: this.player.x + 360,
       y: this.player.y - 200,
       vx: 0,
       vy: 0,
       radius: bossRadius,
       hp: bossHp,
       maxHp: bossHp,
-      speed: Math.round(95 * s.enemySpeedMultiplier),
-      scoreValue: 6000,
-      xpValue: 240,
+      speed: Math.round(102 * s.enemySpeedMultiplier),
+      scoreValue: 7000 + s.id * 500,
+      xpValue: 270 + s.id * 30,
       color: bossColor,
       angle: 0,
       telegraphProgress: 0,
       state: 'idle',
       stateTimer: 0,
-      attackCooldown: 1.5,
+      attackCooldown: 1.3,
       hitFlashTimer: 0,
     });
   }
@@ -2226,36 +2268,46 @@ export class GameEngine {
     w: number,
     h: number
   ) {
-    // Deep space gradient
-    const grad = ctx.createRadialGradient(w / 2, h / 2, 80, w / 2, h / 2, w * 0.7);
-    grad.addColorStop(0, '#090e24');
-    grad.addColorStop(1, '#020308');
+    const s = this.currentSector;
+    const [innerBg, outerBg] = s.bgGradient || ['#071938', '#010512'];
+
+    // Sector-specific deep space radial atmosphere
+    const grad = ctx.createRadialGradient(w / 2, h / 2, 80, w / 2, h / 2, w * 0.75);
+    grad.addColorStop(0, innerBg);
+    grad.addColorStop(1, outerBg);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, w, h);
 
-    // Cosmic Nebulae Dust Clouds with translucent cosmic colors
-    const nebulae = [
-      { x: w * 0.2 - camX * 0.05, y: h * 0.25 - camY * 0.05, r: 280, color: 'rgba(168, 85, 247, 0.12)' }, // Purple
-      { x: w * 0.75 - camX * 0.06, y: h * 0.7 - camY * 0.06, r: 320, color: 'rgba(6, 182, 212, 0.10)' }, // Cyan
-      { x: w * 0.45 - camX * 0.04, y: h * 0.85 - camY * 0.04, r: 240, color: 'rgba(236, 72, 153, 0.08)' }, // Magenta
+    // Sector-specific cosmic nebulae dust clouds with smooth parallax drift
+    const nebulaeDefs = s.nebulae || [
+      { xPct: 0.22, yPct: 0.28, r: 340, color: 'rgba(6, 182, 212, 0.16)' },
+      { xPct: 0.78, yPct: 0.72, r: 380, color: 'rgba(59, 130, 246, 0.14)' },
+      { xPct: 0.45, yPct: 0.82, r: 260, color: 'rgba(14, 165, 233, 0.12)' },
     ];
-    for (const n of nebulae) {
-      const nGrad = ctx.createRadialGradient(n.x, n.y, 10, n.x, n.y, n.r);
+
+    for (let idx = 0; idx < nebulaeDefs.length; idx++) {
+      const n = nebulaeDefs[idx];
+      const parallax = 0.04 + idx * 0.015;
+      const nx = ((w * n.xPct - camX * parallax) % (w * 1.5) + w * 1.5) % (w * 1.5) - w * 0.25;
+      const ny = ((h * n.yPct - camY * parallax) % (h * 1.5) + h * 1.5) % (h * 1.5) - h * 0.25;
+
+      const nGrad = ctx.createRadialGradient(nx, ny, 20, nx, ny, n.r);
       nGrad.addColorStop(0, n.color);
       nGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = nGrad;
       ctx.beginPath();
-      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+      ctx.arc(nx, ny, n.r, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // Stars with multi-layer depth
+    // Stars with multi-layer depth & sector starlight tint
+    const starTint = s.starTint || '#ffffff';
     ctx.save();
     for (const star of this.stars) {
       const screenX = ((star.x - camX * star.speed) % w + w) % w;
       const screenY = ((star.y - camY * star.speed) % h + h) % h;
       ctx.globalAlpha = star.alpha;
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = star.size > 1.2 ? starTint : '#ffffff';
       ctx.beginPath();
       ctx.arc(screenX, screenY, star.size, 0, Math.PI * 2);
       ctx.fill();
@@ -2545,110 +2597,281 @@ export class GameEngine {
         ctx.arc(-2, 0, 7, 0, Math.PI * 2);
         ctx.fill();
       } else if (e.type === 'aegis_sentinel') {
-        // Aegis Sentinel: Heavy Bastion Shield Diamond with revolving barrier plates
+        // Massive Golden Aegis Sentinel: Heavy Bastion Shield Diamond with revolving golden barrier rings
+        // Dual rotating orbital golden barrier rings
+        ctx.save();
+        ctx.rotate(Date.now() * 0.0016);
+        ctx.strokeStyle = 'rgba(250, 204, 21, 0.55)';
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([18, 12]);
         ctx.beginPath();
-        ctx.moveTo(38, 0);
-        ctx.lineTo(0, -28);
-        ctx.lineTo(-32, 0);
-        ctx.lineTo(0, 28);
-        ctx.closePath();
-        ctx.fill();
-        ctx.strokeStyle = '#818cf8';
-        ctx.lineWidth = 3;
+        ctx.arc(0, 0, e.radius + 14, 0, Math.PI * 2);
         ctx.stroke();
 
-        // Glowing aegis core
-        ctx.fillStyle = '#c7d2fe';
+        ctx.rotate(-Date.now() * 0.003);
+        ctx.strokeStyle = 'rgba(254, 240, 138, 0.7)';
+        ctx.lineWidth = 1.8;
+        ctx.setLineDash([12, 16]);
         ctx.beginPath();
-        ctx.arc(0, 0, 10, 0, Math.PI * 2);
-        ctx.fill();
-      } else if (e.type === 'hive_queen') {
-        // Hive Queen: Multi-segment organic carapace
-        ctx.beginPath();
-        ctx.ellipse(0, 0, 36, 24, 0, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.arc(0, 0, e.radius + 7, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
 
-        // Mandibles
-        ctx.fillStyle = '#f43f5e';
-        ctx.beginPath();
-        ctx.moveTo(32, -10);
-        ctx.lineTo(48, -4);
-        ctx.lineTo(32, 0);
-        ctx.moveTo(32, 0);
-        ctx.lineTo(48, 4);
-        ctx.lineTo(32, 10);
-        ctx.fill();
-
-        // Venom glow core
-        ctx.fillStyle = '#f472b6';
-        ctx.beginPath();
-        ctx.arc(-8, 0, 11, 0, Math.PI * 2);
-        ctx.fill();
-      } else if (e.type === 'omega_primus') {
-        // Omega Titan Primus: 16-point colossal warship dreadnought
-        ctx.beginPath();
-        for (let i = 0; i < 16; i++) {
-          const a = (i / 16) * Math.PI * 2;
-          const r = i % 2 === 0 ? 50 : 36;
-          const px = Math.cos(a) * r;
-          const py = Math.sin(a) * r;
-          if (i === 0) ctx.moveTo(px, py);
-          else ctx.lineTo(px, py);
+        // 4 Revolving Golden Bastion Shield Slabs
+        ctx.save();
+        ctx.rotate(Date.now() * 0.001);
+        ctx.fillStyle = '#facc15';
+        ctx.strokeStyle = '#ca8a04';
+        ctx.lineWidth = 2;
+        for (let s = 0; s < 4; s++) {
+          const sa = (s / 4) * Math.PI * 2;
+          const sx = Math.cos(sa) * (e.radius + 2);
+          const sy = Math.sin(sa) * (e.radius + 2);
+          ctx.beginPath();
+          ctx.arc(sx, sy, 7, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
         }
+        ctx.restore();
+
+        // Heavy Bastion Diamond Hull
+        ctx.beginPath();
+        ctx.moveTo(56, 0);
+        ctx.lineTo(0, -42);
+        ctx.lineTo(-46, 0);
+        ctx.lineTo(0, 42);
         ctx.closePath();
+        ctx.fillStyle = '#eab308';
         ctx.fill();
-        ctx.strokeStyle = '#fca5a5';
-        ctx.lineWidth = 3;
+        ctx.strokeStyle = '#fef08a';
+        ctx.lineWidth = 3.5;
         ctx.stroke();
 
-        // Pulsing dark matter singularity center
+        // Golden armor wing sponsons
+        ctx.fillStyle = '#ca8a04';
+        ctx.beginPath();
+        ctx.moveTo(20, -32);
+        ctx.lineTo(36, -18);
+        ctx.lineTo(10, -12);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(20, 32);
+        ctx.lineTo(36, 18);
+        ctx.lineTo(10, 12);
+        ctx.closePath();
+        ctx.fill();
+
+        // Glowing white-hot solar reactor core
         ctx.fillStyle = '#ffffff';
-        ctx.shadowColor = '#ef4444';
+        ctx.shadowColor = '#facc15';
         ctx.shadowBlur = 18;
         ctx.beginPath();
         ctx.arc(0, 0, 15, 0, Math.PI * 2);
         ctx.fill();
         ctx.shadowBlur = 0;
-      } else if (e.type === 'titan_boss') {
-        // Titan Boss: Concentric spiked armored core
+      } else if (e.type === 'hive_queen') {
+        // Massive Golden Hive Queen: Golden Organic Sovereign
+        // Outer pulsing golden pheromone ring
+        ctx.save();
+        ctx.rotate(Date.now() * 0.0014);
+        ctx.strokeStyle = 'rgba(250, 204, 21, 0.6)';
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([16, 12]);
         ctx.beginPath();
-        for (let i = 0; i < 12; i++) {
-          const a = (i / 12) * Math.PI * 2;
-          const r = i % 2 === 0 ? 42 : 32;
+        ctx.arc(0, 0, e.radius + 14, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+
+        // Multi-segment golden carapace
+        ctx.fillStyle = '#ca8a04';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 52, 36, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#fef08a';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        // Inner golden dorsal plate
+        ctx.fillStyle = '#facc15';
+        ctx.beginPath();
+        ctx.ellipse(-4, 0, 38, 24, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Massive flaring golden mandibles
+        ctx.fillStyle = '#eab308';
+        ctx.beginPath();
+        ctx.moveTo(42, -18);
+        ctx.lineTo(66, -8);
+        ctx.lineTo(44, 0);
+        ctx.lineTo(66, 8);
+        ctx.lineTo(42, 18);
+        ctx.fill();
+        ctx.strokeStyle = '#fef08a';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Golden solar egg chamber
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = '#facc15';
+        ctx.shadowBlur = 16;
+        ctx.beginPath();
+        ctx.arc(-12, 0, 16, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      } else if (e.type === 'omega_primus') {
+        // Colossal Golden Omega Primus: 18-point imperial titan dreadnought
+        // Dual counter-rotating golden barrier rings
+        ctx.save();
+        ctx.rotate(Date.now() * 0.0018);
+        ctx.strokeStyle = 'rgba(250, 204, 21, 0.65)';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([20, 14]);
+        ctx.beginPath();
+        ctx.arc(0, 0, e.radius + 16, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.rotate(-Date.now() * 0.0036);
+        ctx.strokeStyle = 'rgba(254, 240, 138, 0.75)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([14, 18]);
+        ctx.beginPath();
+        ctx.arc(0, 0, e.radius + 9, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+
+        // 18-point colossal golden hull
+        ctx.beginPath();
+        for (let i = 0; i < 18; i++) {
+          const a = (i / 18) * Math.PI * 2;
+          const r = i % 2 === 0 ? 68 : 50;
           const px = Math.cos(a) * r;
           const py = Math.sin(a) * r;
           if (i === 0) ctx.moveTo(px, py);
           else ctx.lineTo(px, py);
         }
         ctx.closePath();
+        ctx.fillStyle = '#eab308';
+        ctx.fill();
+        ctx.strokeStyle = '#fef08a';
+        ctx.lineWidth = 4;
+        ctx.stroke();
+
+        // Inner layered golden armor plate
+        ctx.beginPath();
+        for (let i = 0; i < 18; i++) {
+          const a = (i / 18) * Math.PI * 2;
+          const r = i % 2 === 0 ? 46 : 36;
+          const px = Math.cos(a) * r;
+          const py = Math.sin(a) * r;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fillStyle = '#ca8a04';
         ctx.fill();
 
-        // Pulsing core eye
+        // Pulsing blinding white-hot golden singularity center
         ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = '#facc15';
+        ctx.shadowBlur = 24;
         ctx.beginPath();
-        ctx.arc(0, 0, 12, 0, Math.PI * 2);
+        ctx.arc(0, 0, 20, 0, Math.PI * 2);
         ctx.fill();
+        ctx.shadowBlur = 0;
+      } else if (e.type === 'titan_boss') {
+        // Massive Golden Titan Boss: 14-point faceted spiked armored core
+        // Rotating golden energy barrier ring
+        ctx.save();
+        ctx.rotate(Date.now() * 0.002);
+        ctx.strokeStyle = 'rgba(250, 204, 21, 0.6)';
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([18, 12]);
+        ctx.beginPath();
+        ctx.arc(0, 0, e.radius + 14, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.rotate(-Date.now() * 0.0035);
+        ctx.strokeStyle = 'rgba(254, 240, 138, 0.7)';
+        ctx.lineWidth = 1.8;
+        ctx.setLineDash([12, 16]);
+        ctx.beginPath();
+        ctx.arc(0, 0, e.radius + 7, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+
+        // Spiked armored golden hull (14 points, large radius)
+        ctx.beginPath();
+        for (let i = 0; i < 14; i++) {
+          const a = (i / 14) * Math.PI * 2;
+          const r = i % 2 === 0 ? 60 : 44;
+          const px = Math.cos(a) * r;
+          const py = Math.sin(a) * r;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fillStyle = '#eab308';
+        ctx.fill();
+        ctx.strokeStyle = '#fef08a';
+        ctx.lineWidth = 3.5;
+        ctx.stroke();
+
+        // Inner faceted gold core ring
+        ctx.beginPath();
+        ctx.arc(0, 0, 28, 0, Math.PI * 2);
+        ctx.fillStyle = '#ca8a04';
+        ctx.fill();
+
+        // Blazing white-gold solar reactor eye
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = '#facc15';
+        ctx.shadowBlur = 18;
+        ctx.beginPath();
+        ctx.arc(0, 0, 16, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
       }
 
       ctx.restore();
 
-      // Enemy Health Bar (if damaged)
-      if (e.hp < e.maxHp) {
-        const isBoss =
-          e.type === 'titan_boss' ||
-          e.type === 'aegis_sentinel' ||
-          e.type === 'hive_queen' ||
-          e.type === 'omega_primus';
-        const barWidth = isBoss ? e.radius * 2.8 : e.radius * 2.2;
-        const barHeight = isBoss ? 6 : 4;
-        const barX = sx - barWidth / 2;
-        const barY = sy - e.radius - (isBoss ? 16 : 12);
+      // Enemy Health Bar
+      const isBoss =
+        e.type === 'titan_boss' ||
+        e.type === 'aegis_sentinel' ||
+        e.type === 'hive_queen' ||
+        e.type === 'omega_primus';
 
-        ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      if (e.hp < e.maxHp || isBoss) {
+        const barWidth = isBoss ? e.radius * 3.0 : e.radius * 2.2;
+        const barHeight = isBoss ? 8 : 4;
+        const barX = sx - barWidth / 2;
+        const barY = sy - e.radius - (isBoss ? 24 : 12);
+
+        // Boss Title in Turkish
+        if (isBoss) {
+          ctx.save();
+          ctx.font = 'bold 12px "Orbitron", sans-serif';
+          ctx.fillStyle = '#fde047';
+          ctx.shadowColor = '#000000';
+          ctx.shadowBlur = 6;
+          ctx.textAlign = 'center';
+          ctx.fillText(this.currentSector.bossNameTr || 'ALTIN TİTAN', sx, barY - 8);
+          ctx.restore();
+        }
+
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
         ctx.fillRect(barX, barY, barWidth, barHeight);
 
+        // Golden boss health bar frame
+        if (isBoss) {
+          ctx.strokeStyle = '#facc15';
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(barX, barY, barWidth, barHeight);
+        }
+
         const healthPct = clamp(e.hp / e.maxHp, 0, 1);
-        ctx.fillStyle = isBoss ? e.color : '#eab308';
+        ctx.fillStyle = isBoss ? '#facc15' : '#eab308';
         ctx.fillRect(barX, barY, barWidth * healthPct, barHeight);
       }
     }

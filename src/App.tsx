@@ -162,8 +162,12 @@ export default function App() {
         setCurrentBpm(bpm);
         setCurrentTrackName(soundEngine.getCurrentTrack().nameTr);
       },
+      onSectorChange: (sector) => {
+        setCurrentSectorId(sector.id);
+      },
     });
     engineRef.current = engine;
+    (window as any).__ENGINE__ = engine;
     engine.startLoop();
 
     // Check autostart query param
